@@ -1,0 +1,5 @@
+numpy
+PIL 
+tensorflow
+glove https://github.com/brandontrabucco/glove/tree/8f11a9b3ab927a15a947683ca7a1fcbc5d9c8ba1
+object_detection https://github.com/tensorflow/models/tree/69b016449ffc797421bf003d8b7fd8545db866d7/research
