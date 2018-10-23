@@ -146,5 +146,5 @@ class UpDownCell(tf.contrib.rnn.LayerRNNCell):
     
     @property
     def weights(self):
-        return self.trainable_variables
+        return self.variables
     
