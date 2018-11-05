@@ -9,8 +9,7 @@ from detailed_captioning.layers.image_captioner import ImageCaptioner
 from detailed_captioning.utils import check_runtime
 from detailed_captioning.utils import load_glove
 from detailed_captioning.utils import load_image_from_path
-from detailed_captioning.utils import get_object_detector_config
-from detailed_captioning.utils import get_object_detector_checkpoint
+from detailed_captioning.utils import get_resnet_v2_101_checkpoint
 from detailed_captioning.utils import get_image_captioner_checkpoint
 from detailed_captioning.inputs.mscoco import import_mscoco
 
@@ -26,31 +25,31 @@ if __name__ == "__main__":
 
         with tf.Graph().as_default():
 
-            image_tensor, image_ids, input_tensor, label_tensor, input_mask = (
-                import_mscoco(is_training=True, batch_size=1, num_epochs=1))
-            captioner = ImageCaptioner(get_object_detector_config(), 300, batch_size=1, 
-                                       beam_size=3, vocab_size=100000, embedding_size=300)
-            logits, ids = captioner(image_tensor, seq_inputs=input_tensor, 
-                                    lengths=tf.reduce_sum(input_mask, axis=1))
+            image_id, image, scores, boxes, input_seq, target_seq, indicator = (
+                import_mscoco(is_training=True, batch_size=32, num_epochs=1, k=8))
+            
+            image_captioner = ImageCaptioner(300, batch_size=32, beam_size=3, 
+                vocab_size=100000, embedding_size=300, fine_tune_cnn=False)
+            logits, ids = image_captioner(image, boxes, seq_inputs=input_seq, 
+                                          lengths=tf.reduce_sum(indicator, axis=1))
 
-            tf.losses.sparse_softmax_cross_entropy(label_tensor, logits, weights=input_mask)
+            tf.losses.sparse_softmax_cross_entropy(target_seq, logits, weights=indicator)
             loss = tf.losses.get_total_loss()
             learning_step = tf.train.GradientDescentOptimizer(1.0).minimize(
-                loss, var_list=captioner.variables.captioner_variables)
+                loss, var_list=image_captioner.variables.up_down_cell)
 
-            captioner_saver = tf.train.Saver(var_list=captioner.variables.join())
-            object_detector_saver = tf.train.Saver(var_list=captioner.variables.detector_variables)
+            resnet_saver = tf.train.Saver(var_list=image_captioner.variables.feature_extractor)
+            captioner_saver = tf.train.Saver(var_list=image_captioner.variables.all)
             captioner_ckpt = get_image_captioner_checkpoint()
-            object_detector_ckpt = get_object_detector_checkpoint()
 
             with tf.Session() as sess:
 
                 if captioner_ckpt is not None:
                     captioner_saver.restore(sess, captioner_ckpt)
                 else:
-                    object_detector_saver.restore(sess, object_detector_ckpt)
                     sess.run(tf.variables_initializer(
-                        list(captioner.variables.captioner_variables.values())))
+                        image_captioner.variables.up_down_cell))
+                    resnet_saver.restore(sess, get_resnet_v2_101_checkpoint())
 
                 for i in itertools.count():
                     
@@ -60,7 +59,7 @@ if __name__ == "__main__":
                             vocab.id_to_word(x) for x in a[0, :].tolist()])))
                         
                     except Exception as e:
-                        print(e)
+                        print("Finishing training.")
                         break
 
                     captioner_saver.save(sess, 'ckpts/caption_model/model.ckpt')

@@ -18,9 +18,9 @@ def _process_tf_record_proto(serialized_proto):
             "image/image_id": tf.FixedLenFeature([], dtype=tf.int64)},
         sequence_features = {
             "image/caption_ids": tf.FixedLenSequenceFeature([], dtype=tf.int64),
-            "image/scores": tf.FixedLenSequenceFeature([], dtype=tf.float64),
+            "image/scores": tf.FixedLenSequenceFeature([], dtype=tf.float32),
             "image/scores_shape": tf.FixedLenSequenceFeature([], dtype=tf.int64),
-            "image/boxes": tf.FixedLenSequenceFeature([], dtype=tf.float64),
+            "image/boxes": tf.FixedLenSequenceFeature([], dtype=tf.float32),
             "image/boxes_shape": tf.FixedLenSequenceFeature([], dtype=tf.int64)})
     image, image_id, caption = (
         context["image/data"], context["image/image_id"], sequence["image/caption_ids"])
@@ -113,7 +113,7 @@ def _apply_dataset_transformations(dataset, is_training):
     return dataset.map(_convert_dtype)
 
 
-def import_mscoco(is_training=True, batch_size=32, num_epochs=1):
+def import_mscoco(is_training=True, batch_size=32, num_epochs=1, k=8):
     dataset = _load_dataset_from_tf_records(is_training)
     dataset = _apply_dataset_transformations(dataset, is_training)
     dataset = dataset.shuffle(buffer_size=1000)
@@ -127,5 +127,8 @@ def import_mscoco(is_training=True, batch_size=32, num_epochs=1):
     image, image_id, input_seq, target_seq, indicator, scores, boxes = (
         x["image"], x["image_id"], x["input_seq"], x["target_seq"], x["indicator"], 
         x["scores"], x["boxes"])
+    scores, top_k = tf.nn.top_k(scores, k=k)
+    batch_ids = tf.tile(tf.expand_dims(tf.range(batch_size), 1), [1, k])
+    boxes = tf.gather_nd(boxes, tf.stack([batch_ids, top_k], 2))
     return image_id, image, scores, boxes, input_seq, target_seq, indicator
     

@@ -31,7 +31,7 @@ class ImageCaptioner(tf.keras.layers.Layer):
 
     def __init__(self, lstm_units, 
             batch_size=1, beam_size=3, vocab_size=1000, embedding_size=50, 
-            name=None, trainable=False, fine_tune_cnn=False, 
+            name=None, trainable=True, fine_tune_cnn=False, 
             use_peepholes=False, cell_clip=None,
             initializer=None, num_proj=None, proj_clip=None,
             num_unit_shards=None, num_proj_shards=None,
@@ -61,7 +61,7 @@ class ImageCaptioner(tf.keras.layers.Layer):
         vocab, pretrained_matrix = load_glove(vocab_size, embedding_size)
         self.vocab = vocab
         self.embeddings_map = tf.get_variable("embeddings_map", dtype=tf.float32,
-            initializer=tf.constant(pretrained_matrix, dtype=tf.float32))
+            initializer=tf.constant(pretrained_matrix, dtype=tf.float32), trainable=False)
         self.logits_layer = tf.layers.Dense(vocab_size, name="logits_layer", 
             kernel_initializer=tf.contrib.layers.xavier_initializer())
     
