@@ -29,14 +29,6 @@ def load_image_from_path(image_path):
         (im_height, im_width, 3)).astype(np.uint8)
 
 
-def get_mscoco_label_map():
-    
-    check_runtime()
-    map_file = os.path.join('data/', 'mscoco_label_map.pbtxt')
-    return label_map_util.create_category_index_from_labelmap(
-        map_file, use_display_name=True)
-
-
 def load_glove(vocab_size=1000, embedding_size=50):
     
     # The config params for loading the vocab and embedding
@@ -47,19 +39,25 @@ def load_glove(vocab_size=1000, embedding_size=50):
     return glove.load(config)
 
 
-def get_object_detector_config():
+def get_faster_rcnn_config():
     
     check_runtime()
     return ('ckpts/' + 
-             'ssd_resnet50_v1_fpn_shared_box_predictor_640x640_coco14_sync/' +
+             'faster_rcnn_resnet101_coco/' +
              'pipeline.config')
 
 
-def get_object_detector_checkpoint():
+def get_faster_rcnn_checkpoint():
 
     check_runtime()
     return tf.train.latest_checkpoint('ckpts/' + 
-             'ssd_resnet50_v1_fpn_shared_box_predictor_640x640_coco14_sync/')
+             'faster_rcnn_resnet101_coco/')
+
+
+def get_resnet_v2_101_checkpoint():
+
+    check_runtime()
+    return ('ckpts/resnet_v2_101/resnet_v2_101.ckpt')
 
 
 def get_image_captioner_checkpoint():

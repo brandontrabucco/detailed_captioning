@@ -22,6 +22,9 @@ from collections import Counter
 from collections import namedtuple
 from datetime import datetime
 from detailed_captioning.utils import load_glove
+from detailed_captioning.layers.box_extractor import BoxExtractor
+from detailed_captioning.utils import get_faster_rcnn_config
+from detailed_captioning.utils import get_faster_rcnn_checkpoint
 
 
 tf.flags.DEFINE_string("train_image_dir", "/tmp/train2014/",
@@ -63,6 +66,9 @@ FLAGS = tf.flags.FLAGS
 ImageMetadata = namedtuple("ImageMetadata",
                            ["image_id", "filename", "captions"])
 
+PreextractedMetadata = namedtuple("PreextractedMetadata",
+                           ["image_id", "filename", "captions", "scores", "boxes"])
+
 class ImageDecoder(object):
     """Helper class for decoding images in TensorFlow."""
 
@@ -73,6 +79,7 @@ class ImageDecoder(object):
         # TensorFlow ops for JPEG decoding.
         self._encoded_jpeg = tf.placeholder(dtype=tf.string)
         self._decode_jpeg = tf.image.decode_jpeg(self._encoded_jpeg, channels=3)
+        self._decode_jpeg = tf.image.resize_images(self._decode_jpeg, [640, 640])
 
     def decode_jpeg(self, encoded_jpeg):
         image = self._sess.run(self._decode_jpeg,
@@ -80,6 +87,11 @@ class ImageDecoder(object):
         assert len(image.shape) == 3
         assert image.shape[2] == 3
         return image
+
+
+def _float_feature(value):
+    """Wrapper for inserting an float Feature into a SequenceExample proto."""
+    return tf.train.Feature(float_list=tf.train.FloatList(value=[value]))
 
 
 def _int64_feature(value):
@@ -92,6 +104,11 @@ def _bytes_feature(value):
     return tf.train.Feature(bytes_list=tf.train.BytesList(value=[value]))
 
 
+def _float_feature_list(values):
+    """Wrapper for inserting an float64 FeatureList into a SequenceExample proto."""
+    return tf.train.FeatureList(feature=[_float_feature(v) for v in values])
+
+
 def _int64_feature_list(values):
     """Wrapper for inserting an int64 FeatureList into a SequenceExample proto."""
     return tf.train.FeatureList(feature=[_int64_feature(v) for v in values])
@@ -102,11 +119,10 @@ def _bytes_feature_list(values):
     return tf.train.FeatureList(feature=[_bytes_feature(v) for v in values])
 
 
-def _to_sequence_example(image, decoder, vocab):
+def _to_sequence_example(image, vocab):
     """Builds a SequenceExample proto for an image-caption pair.
     Args:
         image: An ImageMetadata object.
-        decoder: An ImageDecoder object.
         vocab: A Vocabulary object.
     Returns:
         A SequenceExample proto.
@@ -114,23 +130,20 @@ def _to_sequence_example(image, decoder, vocab):
     with tf.gfile.FastGFile(image.filename, "rb") as f:
         encoded_image = f.read()
 
-    try:
-        decoder.decode_jpeg(encoded_image)
-    except (tf.errors.InvalidArgumentError, AssertionError):
-        print("Skipping file with invalid JPEG data: %s" % image.filename)
-        return
-
     context = tf.train.Features(feature={
         "image/image_id": _int64_feature(image.image_id),
         "image/data": _bytes_feature(encoded_image),
     })
-
     assert len(image.captions) == 1
     caption = image.captions[0]
     caption_ids = [vocab.word_to_id(word) for word in caption]
     feature_lists = tf.train.FeatureLists(feature_list={
         "image/caption": _bytes_feature_list([bytes(c, "utf-8") for c in caption]),
-        "image/caption_ids": _int64_feature_list(caption_ids)
+        "image/caption_ids": _int64_feature_list(caption_ids),
+        "image/scores": _float_feature_list(image.scores.flatten().tolist()),
+        "image/scores_shape": _int64_feature_list(image.scores.shape),
+        "image/boxes": _float_feature_list(image.boxes.flatten().tolist()),
+        "image/boxes_shape": _int64_feature_list(image.boxes.shape),
     })
     sequence_example = tf.train.SequenceExample(
         context=context, feature_lists=feature_lists)
@@ -138,8 +151,7 @@ def _to_sequence_example(image, decoder, vocab):
     return sequence_example
 
 
-def _process_image_files(thread_index, ranges, name, images, decoder, vocab,
-                         num_shards):
+def _process_image_files(thread_index, ranges, name, images, vocab, num_shards):
     """Processes and saves a subset of images as TFRecord files in one thread.
     Args:
       thread_index: Integer thread identifier within [0, len(ranges)].
@@ -147,7 +159,6 @@ def _process_image_files(thread_index, ranges, name, images, decoder, vocab,
         process in parallel.
       name: Unique identifier specifying the dataset.
       images: List of ImageMetadata.
-      decoder: An ImageDecoder object.
       vocab: A Vocabulary object.
       num_shards: Integer number of shards for the output files.
     """
@@ -172,10 +183,10 @@ def _process_image_files(thread_index, ranges, name, images, decoder, vocab,
 
         shard_counter = 0
         images_in_shard = np.arange(shard_ranges[s], shard_ranges[s + 1], dtype=int)
+        
         for i in images_in_shard:
             image = images[i]
-
-            sequence_example = _to_sequence_example(image, decoder, vocab)
+            sequence_example = _to_sequence_example(image, vocab)
             if sequence_example is not None:
                 writer.write(sequence_example.SerializeToString())
                 shard_counter += 1
@@ -204,10 +215,7 @@ def _process_dataset(name, images, vocab, num_shards):
         vocab: A Vocabulary object.
         num_shards: Integer number of shards for the output files.
     """
-    # Break up each image into a separate entity for each caption.
-    images = [ImageMetadata(image.image_id, image.filename, [caption])
-              for image in images for caption in image.captions]
-  
+    
     # Shuffle the ordering of images. Make the randomization repeatable.
     random.seed(12345)
     random.shuffle(images)
@@ -224,13 +232,10 @@ def _process_dataset(name, images, vocab, num_shards):
     # Create a mechanism for monitoring when all threads are finished.
     coord = tf.train.Coordinator()
 
-    # Create a utility for decoding JPEG images to run sanity checks.
-    decoder = ImageDecoder()
-
     # Launch a thread for each batch.
     print("Launching %d threads for spacings: %s" % (num_threads, ranges))
     for thread_index in xrange(len(ranges)):
-        args = (thread_index, ranges, name, images, decoder, vocab, num_shards)
+        args = (thread_index, ranges, name, images, vocab, num_shards)
         t = threading.Thread(target=_process_image_files, args=args)
         t.start()
         threads.append(t)
@@ -290,10 +295,71 @@ def _load_and_process_metadata(captions_file, image_dir):
         captions = [_process_caption(c) for c in id_to_captions[image_id]]
         image_metadata.append(ImageMetadata(image_id, filename, captions))
         num_captions += len(captions)
+    # Break up each image into a separate entity for each caption.
+    images = [ImageMetadata(image.image_id, image.filename, [caption])
+              for image in image_metadata for caption in image.captions]
     print("Finished processing %d captions for %d images in %s" %
         (num_captions, len(id_to_filename), captions_file))
+    
+    return images
 
-    return image_metadata
+        
+def _preextract_batch(batch_of_images, run_model_fn):
+    """Runs the box extractor model on a single batch of images.
+    Args:
+        batch_of_images: list of (ImageMetadata, np.float32 shape [640, 640, 3]).
+        run_model_fn: function that accepts np.float32 shape [batch_size, 640, 640, 3]
+    Returns:
+        A list of PreextractedMetadata.
+    """
+
+    # Extract the image and object features for a batch
+    images, tensors = zip(*batch_of_images)
+    boxes, scores = run_model_fn(np.stack(tensors))
+    output_dataset = [PreextractedMetadata(
+        image.image_id, image.filename, image.captions, 
+        scores[j, :], boxes[j, :]) for j, image in enumerate(images)]
+    
+    return output_dataset
+
+
+def _preextract_dataset(dataset_of_images, run_model_fn, BATCH_SIZE=32):
+    """Runs the box extractor model on a single batch of images.
+    Args:
+        dataset_of_images: list of ImageMetadata.
+        run_model_fn: function that accepts np.float32 shape [batch_size, 640, 640, 3]
+    Returns:
+        A list of PreextractedMetadata.
+    """
+
+    # Prepare batches to pass through the SSD Model
+    batch_of_images, output_dataset = [], []
+    decoder = ImageDecoder()
+    for i, image in enumerate(dataset_of_images):
+        with tf.gfile.FastGFile(image.filename, "rb") as f:
+            encoded_image = f.read()
+            
+        try:
+            batch_of_images += [[image, decoder.decode_jpeg(encoded_image)]]
+        except (tf.errors.InvalidArgumentError, AssertionError):
+            print("Skipping file with invalid JPEG data: %s" % image.filename)
+            continue
+            
+        if len(batch_of_images) % BATCH_SIZE == 0:
+            print("%s: Starting batch %d of %d on Box Extractor" %
+                (datetime.now(), i // BATCH_SIZE, len(dataset_of_images) // BATCH_SIZE))
+            output_dataset += _preextract_batch(batch_of_images, run_model_fn)
+            batch_of_images = []
+            print("%s: Finished running batch %d of %d on Box Extractor" %
+                (datetime.now(), i // BATCH_SIZE, len(dataset_of_images) // BATCH_SIZE))
+            
+    if len(batch_of_images) != 0:
+            output_dataset += _preextract_batch(batch_of_images, run_model_fn)
+            batch_of_images = []
+    print("%s: Finished all %d batches on Box Extractor" %
+        (datetime.now(), len(dataset_of_images) // BATCH_SIZE))
+    
+    return output_dataset
 
 
 def main(unused_argv):
@@ -312,23 +378,36 @@ def main(unused_argv):
         tf.gfile.MakeDirs(FLAGS.output_dir)
 
     # Load image metadata from caption files.
-    mscoco_train_dataset = _load_and_process_metadata(FLAGS.train_captions_file,
-                                                      FLAGS.train_image_dir)
-    mscoco_val_dataset = _load_and_process_metadata(FLAGS.val_captions_file,
-                                                    FLAGS.val_image_dir)
+    mscoco_train_dataset = _load_and_process_metadata(FLAGS.train_captions_file, FLAGS.train_image_dir)
+    mscoco_val_dataset = _load_and_process_metadata(FLAGS.val_captions_file, FLAGS.val_image_dir)
 
     # Redistribute the MSCOCO data as follows:
-    #   train_dataset = 100% of mscoco_train_dataset + 85% of mscoco_val_dataset.
-    #   val_dataset = 5% of mscoco_val_dataset (for validation during training).
-    #   test_dataset = 10% of mscoco_val_dataset (for final evaluation).
-    train_cutoff = int(0.85 * len(mscoco_val_dataset))
-    val_cutoff = int(0.90 * len(mscoco_val_dataset))
-    train_dataset = mscoco_train_dataset + mscoco_val_dataset[0:train_cutoff]
-    val_dataset = mscoco_val_dataset[train_cutoff:val_cutoff]
-    test_dataset = mscoco_val_dataset[val_cutoff:]
+    #   train_dataset = 99% of mscoco_train_dataset
+    #   val_dataset = 1% of mscoco_train_dataset (for validation during training).
+    #   test_dataset = 100% of mscoco_val_dataset (for final evaluation).
+    train_cutoff = int(0.99 * len(mscoco_train_dataset))
+    train_dataset = mscoco_train_dataset[:train_cutoff]
+    val_dataset = mscoco_train_dataset[train_cutoff:]
+    test_dataset = mscoco_val_dataset
 
     # Create vocabulary from the glove embeddings.
     vocab, _ = load_glove(vocab_size=FLAGS.vocab_size, embedding_size=FLAGS.embedding_size)
+
+    # Create the model to extract image features
+    box_extractor = BoxExtractor(get_faster_rcnn_config(), trainable=False)
+    image_tensor = tf.placeholder(tf.float32, name='image_tensor', shape=[None, None, None, 3])
+    boxes, scores, _cropped_images = box_extractor(image_tensor)
+
+    with tf.Session() as sess:
+
+        saver = tf.train.Saver(var_list=box_extractor.variables)
+        saver.restore(sess, get_faster_rcnn_checkpoint())
+        def run_model_fn(images):
+            return sess.run([boxes, scores], feed_dict={image_tensor: images})
+        
+        train_dataset = _preextract_dataset(train_dataset, run_model_fn)
+        val_dataset = _preextract_dataset(val_dataset, run_model_fn)
+        test_dataset = _preextract_dataset(test_dataset, run_model_fn)
 
     _process_dataset("train", train_dataset, vocab, FLAGS.train_shards)
     _process_dataset("val", val_dataset, vocab, FLAGS.val_shards)

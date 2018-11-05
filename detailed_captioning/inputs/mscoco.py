@@ -17,24 +17,33 @@ def _process_tf_record_proto(serialized_proto):
             "image/data": tf.FixedLenFeature([], dtype=tf.string),
             "image/image_id": tf.FixedLenFeature([], dtype=tf.int64)},
         sequence_features = {
-            "image/caption_ids": tf.FixedLenSequenceFeature([], dtype=tf.int64)})
-    image = context["image/data"]
-    image_id = context["image/image_id"]
-    caption = sequence["image/caption_ids"]
-    return {"image": image, "image_id": image_id, "caption": caption}
+            "image/caption_ids": tf.FixedLenSequenceFeature([], dtype=tf.int64),
+            "image/scores": tf.FixedLenSequenceFeature([], dtype=tf.float64),
+            "image/scores_shape": tf.FixedLenSequenceFeature([], dtype=tf.int64),
+            "image/boxes": tf.FixedLenSequenceFeature([], dtype=tf.float64),
+            "image/boxes_shape": tf.FixedLenSequenceFeature([], dtype=tf.int64)})
+    image, image_id, caption = (
+        context["image/data"], context["image/image_id"], sequence["image/caption_ids"])
+    scores = tf.reshape(sequence["image/scores"], sequence["image/scores_shape"])
+    boxes = tf.reshape(sequence["image/boxes"], sequence["image/boxes_shape"])
+    return {"image": image, "image_id": image_id, "caption": caption, 
+            "scores": scores, "boxes": boxes}
 
 
 def _decode_and_resize_image(x):
-    image, image_id, caption = x["image"], x["image_id"], x["caption"]
+    image, image_id, caption, scores, boxes = (
+        x["image"], x["image_id"], x["caption"], x["scores"], x["boxes"])
     image = tf.image.decode_jpeg(image, channels=3)
     image = tf.image.convert_image_dtype(image, dtype=tf.float32)
     image = tf.image.resize_images(image, size=[800, 800], 
                                    method=tf.image.ResizeMethod.BILINEAR)
-    return {"image": image, "image_id": image_id, "caption": caption}
+    return {"image": image, "image_id": image_id, "caption": caption, 
+            "scores": scores, "boxes": boxes}
     
 
 def _random_distort(x):
-    image, image_id, caption = x["image"], x["image_id"], x["caption"]
+    image, image_id, caption, scores, boxes = (
+        x["image"], x["image_id"], x["caption"], x["scores"], x["boxes"])
     image = tf.random_crop(image, [640, 640, 3])
     image = tf.image.random_flip_left_right(image)
     image = tf.image.random_brightness(image, max_delta=32. / 255.)
@@ -42,17 +51,21 @@ def _random_distort(x):
     image = tf.image.random_hue(image, max_delta=0.032)
     image = tf.image.random_contrast(image, lower=0.5, upper=1.5)
     image = tf.clip_by_value(image, 0.0, 1.0)
-    return {"image": image, "image_id": image_id, "caption": caption}
+    return {"image": image, "image_id": image_id, "caption": caption, 
+            "scores": scores, "boxes": boxes}
 
 
 def _crop_or_pad(x):
-    image, image_id, caption = x["image"], x["image_id"], x["caption"]
+    image, image_id, caption, scores, boxes = (
+        x["image"], x["image_id"], x["caption"], x["scores"], x["boxes"])
     image = tf.image.resize_image_with_crop_or_pad(image, 640, 640)
-    return {"image": image, "image_id": image_id, "caption": caption}
+    return {"image": image, "image_id": image_id, "caption": caption, 
+            "scores": scores, "boxes": boxes}
 
 
 def _mask_and_slice(x):
-    image, image_id, caption = x["image"], x["image_id"], x["caption"]
+    image, image_id, caption, scores, boxes = (
+        x["image"], x["image_id"], x["caption"], x["scores"], x["boxes"])
     image = tf.multiply(tf.subtract(image, 0.5), 2.0)
     caption_length = tf.shape(caption)[0]
     input_length = tf.expand_dims(tf.subtract(caption_length, 1), 0)
@@ -60,19 +73,22 @@ def _mask_and_slice(x):
     target_seq = tf.slice(caption, [1], input_length)
     indicator = tf.ones(input_length, dtype=tf.int32)
     return {"image": image, "image_id": image_id, "input_seq": input_seq, 
-            "target_seq": target_seq, "indicator": indicator}
+            "target_seq": target_seq, "indicator": indicator, 
+            "scores": scores, "boxes": boxes}
 
 
 def _convert_dtype(x):
-    image, image_id, input_seq, target_seq, indicator = (
-        x["image"], x["image_id"], x["input_seq"], x["target_seq"], x["indicator"])
+    image, image_id, input_seq, target_seq, indicator, scores, boxes = (
+        x["image"], x["image_id"], x["input_seq"], x["target_seq"], x["indicator"], 
+        x["scores"], x["boxes"])
     image = tf.cast(image, tf.float32)
     image_id = tf.cast(image_id, tf.int32)
     input_seq = tf.cast(input_seq, tf.int32)
     target_seq = tf.cast(target_seq, tf.int32)
     indicator = tf.cast(indicator, tf.float32)
     return {"image": image, "image_id": image_id, "input_seq": input_seq, 
-            "target_seq": target_seq, "indicator": indicator}
+            "target_seq": target_seq, "indicator": indicator, 
+            "scores": scores, "boxes": boxes}
 
 
 def _load_dataset_from_tf_records(is_training):
@@ -102,12 +118,14 @@ def import_mscoco(is_training=True, batch_size=32, num_epochs=1):
     dataset = _apply_dataset_transformations(dataset, is_training)
     dataset = dataset.shuffle(buffer_size=1000)
     padded_shapes = {"image": [640, 640, 3], "image_id": [], "input_seq": [None], 
-                     "target_seq": [None], "indicator": [None]}
+                     "target_seq": [None], "indicator": [None], 
+                     "scores": [100], "boxes": [100, 4]}
     dataset = dataset.padded_batch(batch_size, padded_shapes=padded_shapes)
     dataset = dataset.repeat(num_epochs)
     iterator = dataset.make_one_shot_iterator()
     x = iterator.get_next()
-    image, image_id, input_seq, target_seq, indicator = (
-        x["image"], x["image_id"], x["input_seq"], x["target_seq"], x["indicator"])
-    return image, image_id, input_seq, target_seq, indicator
+    image, image_id, input_seq, target_seq, indicator, scores, boxes = (
+        x["image"], x["image_id"], x["input_seq"], x["target_seq"], x["indicator"], 
+        x["scores"], x["boxes"])
+    return image_id, image, scores, boxes, input_seq, target_seq, indicator
     

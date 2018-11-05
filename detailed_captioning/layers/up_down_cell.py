@@ -131,7 +131,7 @@ class UpDownCell(tf.contrib.rnn.LayerRNNCell):
         # Handles to the models internal shared trainable variables
         cell_variables = (self.visual_lstm.trainable_variables + self.language_lstm.trainable_variables 
                 + self.attn_layer.trainable_variables)
-        return {x.name : x for x in cell_variables}
+        return cell_variables
     
     @property
     def trainable_weights(self):
@@ -142,7 +142,7 @@ class UpDownCell(tf.contrib.rnn.LayerRNNCell):
         # Handles to the models internal shared trainable variables
         cell_variables = (self.visual_lstm.variables + self.language_lstm.variables 
                 + self.attn_layer.variables)
-        return {x.name : x for x in cell_variables}
+        return cell_variables
     
     @property
     def weights(self):
