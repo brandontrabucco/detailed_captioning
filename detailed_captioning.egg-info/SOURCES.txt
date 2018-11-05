@@ -1,5 +1,0 @@
-detailed_captioning.egg-info/PKG-INFO
-detailed_captioning.egg-info/SOURCES.txt
-detailed_captioning.egg-info/dependency_links.txt
-detailed_captioning.egg-info/requires.txt
-detailed_captioning.egg-info/top_level.txt
