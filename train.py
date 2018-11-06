@@ -15,6 +15,7 @@ from detailed_captioning.inputs.mscoco import import_mscoco
 
 
 PRINT_STRING = """Training iteration {0} loss was {1} caption was {2}"""
+BATCH_SIZE = 8
 
 
 if __name__ == "__main__":
@@ -26,9 +27,9 @@ if __name__ == "__main__":
         with tf.Graph().as_default():
 
             image_id, image, scores, boxes, input_seq, target_seq, indicator = (
-                import_mscoco(is_training=True, batch_size=32, num_epochs=1, k=8))
+                import_mscoco(is_training=True, batch_size=BATCH_SIZE, num_epochs=1, k=8))
             
-            image_captioner = ImageCaptioner(300, batch_size=32, beam_size=3, 
+            image_captioner = ImageCaptioner(300, batch_size=BATCH_SIZE, beam_size=3, 
                 vocab_size=100000, embedding_size=300, fine_tune_cnn=False)
             logits, ids = image_captioner(image, boxes, seq_inputs=input_seq, 
                                           lengths=tf.reduce_sum(indicator, axis=1))
