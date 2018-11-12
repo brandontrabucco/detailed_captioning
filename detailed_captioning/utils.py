@@ -65,3 +65,45 @@ def get_image_captioner_checkpoint():
     check_runtime()
     return tf.train.latest_checkpoint('ckpts/' + 
              'caption_model/')
+
+
+def remap_decoder_name_scope(var_list):
+    """Bug fix for running beam search decoder and dynamic rnn."""
+    return {
+        x.name.replace("decoder/", "rnn/")
+              .replace("rnn/logits_layer", "logits_layer")
+              .replace("decoder/while/BeamSearchDecoderStep/logits_layer", "logits_layer")[:-2] : x 
+        for x in var_list}
+
+
+def list_of_ids_to_string(ids, vocab):
+    """Converts the list of ids to a string of captions.
+    Args:
+        ids - a flat list of word ids.
+        vocab - a glove vocab object.
+    Returns:
+        string of words in vocabulary.
+    """
+    assert(isinstance(ids, list))
+    result = ""
+    for i in ids:
+        if i == vocab.end_id:
+            return result
+        result = result + " " + str(vocab.id_to_word(i))
+        if i == vocab.word_to_id("."):
+            return result
+    return result.strip().lower()
+
+
+def recursive_ids_to_string(ids, vocab):
+    """Converts the list of ids to a string of captions.
+    Args:
+        ids - a nested list of word ids.
+        vocab - a glove vocab object.
+    Returns:
+        string of words in vocabulary.
+    """
+    assert(isinstance(ids, list))
+    if isinstance(ids[0], list):
+        return [recursive_ids_to_string(x, vocab) for x in ids]
+    return list_of_ids_to_string(ids, vocab)

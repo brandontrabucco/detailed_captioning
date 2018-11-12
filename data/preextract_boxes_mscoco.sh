@@ -1,2 +1,0 @@
-#!/bin/bash
-python ./data/preextract_boxes_mscoco.py --train_image_dir './data/coco/train2017' --val_image_dir './data/coco/val2017' --train_captions_file './data/coco/annotations/captions_train2017.json' --val_captions_file './data/coco/annotations/captions_val2017.json' --output_dir './data/coco/' --vocab_size 100000 --embedding_size 300

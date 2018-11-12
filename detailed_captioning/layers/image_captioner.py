@@ -5,18 +5,8 @@ TF Object Detection API.'''
 
 import collections
 import tensorflow as tf
-from detailed_captioning.layers.feature_extractor import FeatureExtractor
 from detailed_captioning.layers.up_down_cell import UpDownCell
 from detailed_captioning.utils import load_glove
-
-
-# Used to store the variables for the detector and captioner
-_CaptionerVariables = collections.namedtuple("CaptionerVariables", ("feature_extractor", "up_down_cell"))
-class CaptionerVariables(_CaptionerVariables):
-    __slots__ = ()
-    @property
-    def all(self):
-        return self.feature_extractor + self.up_down_cell
 
 
 def _repeat_elements(num_elements, num_repeats):
@@ -31,7 +21,7 @@ class ImageCaptioner(tf.keras.layers.Layer):
 
     def __init__(self, lstm_units, 
             batch_size=1, beam_size=3, vocab_size=1000, embedding_size=50, 
-            name=None, trainable=True, fine_tune_cnn=False, 
+            name=None, trainable=True,
             use_peepholes=False, cell_clip=None,
             initializer=None, num_proj=None, proj_clip=None,
             num_unit_shards=None, num_proj_shards=None,
@@ -45,8 +35,6 @@ class ImageCaptioner(tf.keras.layers.Layer):
         self.embedding_size = embedding_size
         super(ImageCaptioner, self).__init__(name=name, trainable=trainable, 
             **kwargs)
-        # Load the ResNet-101 CNN Model using Keras Layer API
-        self.feature_extractor = FeatureExtractor(is_training=fine_tune_cnn, reuse=reuse)
         # Load the Up Down RNN Cell to decode with.
         self.up_down_cell = UpDownCell(lstm_units, 
             use_peepholes=use_peepholes, cell_clip=cell_clip,
@@ -65,25 +53,13 @@ class ImageCaptioner(tf.keras.layers.Layer):
         self.logits_layer = tf.layers.Dense(vocab_size, name="logits_layer", 
             kernel_initializer=tf.contrib.layers.xavier_initializer())
     
-    def __call__(self, images, boxes, cropped_images=None, seq_inputs=None, lengths=None):
+    def __call__(self, image_features, object_features, seq_inputs=None, lengths=None):
         
-        # Crop inputs according to the ROI bounding boxes
-        batch_size = tf.shape(images)[0]
-        height = tf.shape(images)[1]
-        width = tf.shape(images)[2]
-        # Maybe need to compute the cropped images (eg: during training)
-        num_boxes = tf.shape(boxes)[1]
-        if cropped_images is None:
-            cropped_images = tf.image.crop_and_resize(images, tf.reshape(boxes, [-1, 4]), 
-                _repeat_elements(batch_size, num_boxes), [height, width])
-        # Run the object detector to extract image and ROI features
-        image_features = tf.reduce_mean(self.feature_extractor(images), [1, 2])
-        object_features = tf.reduce_mean(self.feature_extractor(cropped_images), [1, 2])
-        # There are 2048 dims in the channel since we are using ResNet-101
-        object_features = tf.reshape(object_features, [batch_size, num_boxes, 2048])
+        use_beam_search = seq_inputs is None or lengths is None
+        batch_size = tf.shape(image_features)[0]
         initial_state = self.up_down_cell.zero_state(self.batch_size, tf.float32)
         # Perform beam search if not provided the ground truth
-        if seq_inputs is None or lengths is None:
+        if use_beam_search:
             image_features = tf.contrib.seq2seq.tile_batch(
                 image_features, multiplier=self.beam_size)
             object_features = tf.contrib.seq2seq.tile_batch(
@@ -113,7 +89,8 @@ class ImageCaptioner(tf.keras.layers.Layer):
             self.up_down_cell, tf.nn.embedding_lookup(self.embeddings_map, seq_inputs),
             sequence_length=tf.reshape(lengths, [-1]), initial_state=initial_state)
         logits = self.logits_layer(flat_logits)
-        if seq_inputs is None or lengths is None:
+        if use_beam_search:
+            sequence_length = tf.shape(logits)[1]
             logits = tf.reshape(logits, [self.batch_size, self.beam_size, 
                                          sequence_length, self.vocab_size])
         ids = tf.argmax(logits, axis=-1, output_type=tf.int32)
@@ -123,8 +100,7 @@ class ImageCaptioner(tf.keras.layers.Layer):
     def trainable_variables(self):
         # Returns first the object detector variables and second the captioner variables
         all_variables = (self.logits_layer.trainable_variables + [self.embeddings_map])
-        return CaptionerVariables(self.feature_extractor.trainable_variables, 
-            self.up_down_cell.trainable_variables + all_variables)
+        return self.up_down_cell.trainable_variables + all_variables
     
     @property
     def trainable_weights(self):
@@ -134,8 +110,7 @@ class ImageCaptioner(tf.keras.layers.Layer):
     def variables(self):
         # Returns first the object detector variables and second the captioner variables
         all_variables = (self.logits_layer.variables + [self.embeddings_map])
-        return CaptionerVariables(self.feature_extractor.variables, 
-            self.up_down_cell.variables + all_variables)
+        return self.up_down_cell.variables + all_variables
     
     @property
     def weights(self):

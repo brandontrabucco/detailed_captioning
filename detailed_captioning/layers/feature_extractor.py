@@ -26,6 +26,8 @@ class FeatureExtractor(tf.keras.layers.Layer):
     
     def __call__(self, inputs):
         
+        inputs = ((inputs / 255.0) - 0.5) * 2.0
+        
         with tf.contrib.slim.arg_scope(resnet_arg_scope()):
             
             image_features, end_points = resnet_v2_101(inputs, 
@@ -53,4 +55,3 @@ class FeatureExtractor(tf.keras.layers.Layer):
     @property
     def weights(self):
         return self.variables
-    

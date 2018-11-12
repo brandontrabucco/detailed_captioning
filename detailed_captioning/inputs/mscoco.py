@@ -18,55 +18,54 @@ def _process_tf_record_proto(serialized_proto):
             "image/image_id": tf.FixedLenFeature([], dtype=tf.int64)},
         sequence_features = {
             "image/caption_ids": tf.FixedLenSequenceFeature([], dtype=tf.int64),
-            "image/scores": tf.FixedLenSequenceFeature([], dtype=tf.float32),
-            "image/scores_shape": tf.FixedLenSequenceFeature([], dtype=tf.int64),
-            "image/boxes": tf.FixedLenSequenceFeature([], dtype=tf.float32),
-            "image/boxes_shape": tf.FixedLenSequenceFeature([], dtype=tf.int64)})
+            "image/image_features": tf.FixedLenSequenceFeature([], dtype=tf.float32),
+            "image/image_features_shape": tf.FixedLenSequenceFeature([], dtype=tf.int64),
+            "image/object_features": tf.FixedLenSequenceFeature([], dtype=tf.float32),
+            "image/object_features_shape": tf.FixedLenSequenceFeature([], dtype=tf.int64)})
     image, image_id, caption = (
         context["image/data"], context["image/image_id"], sequence["image/caption_ids"])
-    scores = tf.reshape(sequence["image/scores"], sequence["image/scores_shape"])
-    boxes = tf.reshape(sequence["image/boxes"], sequence["image/boxes_shape"])
+    image_features = tf.reshape(sequence["image/image_features"], sequence["image/image_features_shape"])
+    object_features = tf.reshape(sequence["image/object_features"], sequence["image/object_features_shape"])
     return {"image": image, "image_id": image_id, "caption": caption, 
-            "scores": scores, "boxes": boxes}
+            "image_features": image_features, "object_features": object_features}
 
 
 def _decode_and_resize_image(x):
-    image, image_id, caption, scores, boxes = (
-        x["image"], x["image_id"], x["caption"], x["scores"], x["boxes"])
+    image, image_id, caption, image_features, object_features = (
+        x["image"], x["image_id"], x["caption"], x["image_features"], x["object_features"])
     image = tf.image.decode_jpeg(image, channels=3)
     image = tf.image.convert_image_dtype(image, dtype=tf.float32)
-    image = tf.image.resize_images(image, size=[800, 800], 
+    image = tf.image.resize_images(image, size=[320, 320], 
                                    method=tf.image.ResizeMethod.BILINEAR)
     return {"image": image, "image_id": image_id, "caption": caption, 
-            "scores": scores, "boxes": boxes}
+            "image_features": image_features, "object_features": object_features}
     
 
 def _random_distort(x):
-    image, image_id, caption, scores, boxes = (
-        x["image"], x["image_id"], x["caption"], x["scores"], x["boxes"])
-    image = tf.random_crop(image, [640, 640, 3])
-    image = tf.image.random_flip_left_right(image)
+    image, image_id, caption, image_features, object_features = (
+        x["image"], x["image_id"], x["caption"], x["image_features"], x["object_features"])
+    image = tf.random_crop(image, [224, 224, 3])
+    image = tf.image.random_flip_left_right(image / 255.)
     image = tf.image.random_brightness(image, max_delta=32. / 255.)
     image = tf.image.random_saturation(image, lower=0.5, upper=1.5)
     image = tf.image.random_hue(image, max_delta=0.032)
     image = tf.image.random_contrast(image, lower=0.5, upper=1.5)
-    image = tf.clip_by_value(image, 0.0, 1.0)
+    image = tf.clip_by_value(image, 0.0, 1.0) * 255.
     return {"image": image, "image_id": image_id, "caption": caption, 
-            "scores": scores, "boxes": boxes}
+            "image_features": image_features, "object_features": object_features}
 
 
 def _crop_or_pad(x):
-    image, image_id, caption, scores, boxes = (
-        x["image"], x["image_id"], x["caption"], x["scores"], x["boxes"])
-    image = tf.image.resize_image_with_crop_or_pad(image, 640, 640)
+    image, image_id, caption, image_features, object_features = (
+        x["image"], x["image_id"], x["caption"], x["image_features"], x["object_features"])
+    image = tf.image.resize_image_with_crop_or_pad(image, 224, 224)
     return {"image": image, "image_id": image_id, "caption": caption, 
-            "scores": scores, "boxes": boxes}
+            "image_features": image_features, "object_features": object_features}
 
 
 def _mask_and_slice(x):
-    image, image_id, caption, scores, boxes = (
-        x["image"], x["image_id"], x["caption"], x["scores"], x["boxes"])
-    image = tf.multiply(tf.subtract(image, 0.5), 2.0)
+    image, image_id, caption, image_features, object_features = (
+        x["image"], x["image_id"], x["caption"], x["image_features"], x["object_features"])
     caption_length = tf.shape(caption)[0]
     input_length = tf.expand_dims(tf.subtract(caption_length, 1), 0)
     input_seq = tf.slice(caption, [0], input_length)
@@ -74,13 +73,13 @@ def _mask_and_slice(x):
     indicator = tf.ones(input_length, dtype=tf.int32)
     return {"image": image, "image_id": image_id, "input_seq": input_seq, 
             "target_seq": target_seq, "indicator": indicator, 
-            "scores": scores, "boxes": boxes}
+            "image_features": image_features, "object_features": object_features}
 
 
 def _convert_dtype(x):
-    image, image_id, input_seq, target_seq, indicator, scores, boxes = (
+    image, image_id, input_seq, target_seq, indicator, image_features, object_features = (
         x["image"], x["image_id"], x["input_seq"], x["target_seq"], x["indicator"], 
-        x["scores"], x["boxes"])
+        x["image_features"], x["object_features"])
     image = tf.cast(image, tf.float32)
     image_id = tf.cast(image_id, tf.int32)
     input_seq = tf.cast(input_seq, tf.int32)
@@ -88,17 +87,18 @@ def _convert_dtype(x):
     indicator = tf.cast(indicator, tf.float32)
     return {"image": image, "image_id": image_id, "input_seq": input_seq, 
             "target_seq": target_seq, "indicator": indicator, 
-            "scores": scores, "boxes": boxes}
+            "image_features": image_features, "object_features": object_features}
 
 
-def _load_dataset_from_tf_records(is_training):
+def _load_dataset_from_tf_records(is_training, is_mini):
     if is_training:
-        input_file_pattern = "data/coco/train-?????-of-?????"
+        input_file_pattern = "data/coco{0}/train-?????-of-?????".format("_mini" if is_mini else "")
     if not is_training:
-        input_file_pattern = "data/coco/val-?????-of-?????"
+        input_file_pattern = "data/coco{0}/val-?????-of-?????".format("_mini" if is_mini else "")
     data_files = []
     for pattern in input_file_pattern.split(","):
         data_files.extend(tf.gfile.Glob(pattern))
+    print("Found {0} files matching {1}".format(len(data_files), input_file_pattern))
     return tf.data.TFRecordDataset(data_files)
     
     
@@ -113,22 +113,19 @@ def _apply_dataset_transformations(dataset, is_training):
     return dataset.map(_convert_dtype)
 
 
-def import_mscoco(is_training=True, batch_size=32, num_epochs=1, k=8):
-    dataset = _load_dataset_from_tf_records(is_training)
+def import_mscoco(is_training=True, batch_size=32, num_epochs=1, num_boxes=8, is_mini=True):
+    dataset = _load_dataset_from_tf_records(is_training, is_mini)
     dataset = _apply_dataset_transformations(dataset, is_training)
     dataset = dataset.shuffle(buffer_size=1000)
-    padded_shapes = {"image": [640, 640, 3], "image_id": [], "input_seq": [None], 
+    padded_shapes = {"image": [224, 224, 3], "image_id": [], "input_seq": [None], 
                      "target_seq": [None], "indicator": [None], 
-                     "scores": [100], "boxes": [100, 4]}
+                     "image_features": [2048], "object_features": [num_boxes, 2048]}
     dataset = dataset.padded_batch(batch_size, padded_shapes=padded_shapes)
     dataset = dataset.repeat(num_epochs)
     iterator = dataset.make_one_shot_iterator()
     x = iterator.get_next()
-    image, image_id, input_seq, target_seq, indicator, scores, boxes = (
+    image, image_id, input_seq, target_seq, indicator, image_features, object_features = (
         x["image"], x["image_id"], x["input_seq"], x["target_seq"], x["indicator"], 
-        x["scores"], x["boxes"])
-    scores, top_k = tf.nn.top_k(scores, k=k)
-    batch_ids = tf.tile(tf.expand_dims(tf.range(batch_size), 1), [1, k])
-    boxes = tf.gather_nd(boxes, tf.stack([batch_ids, top_k], 2))
-    return image_id, image, scores, boxes, input_seq, target_seq, indicator
+        x["image_features"], x["object_features"])
+    return image_id, image, image_features, object_features, input_seq, target_seq, indicator
     

@@ -18,10 +18,11 @@ class BoxExtractor(tf.keras.layers.Layer):
     '''Implments a mechanism for extracting bounding boxes.
     Typically uses Faster R-CNN https://arxiv.org/abs/1506.01497.'''
 
-    def __init__(self, pipeline_config_file, name=None, trainable=False, **kwargs):
+    def __init__(self, pipeline_config_file, top_k_boxes=8, name=None, trainable=False, **kwargs):
     
         super(BoxExtractor, self).__init__(trainable=trainable, **kwargs)
         pipeline_config = get_configs_from_pipeline_file(pipeline_config_file)
+        self.top_k_boxes = top_k_boxes
         self.detection_model = model_builder.build(
             pipeline_config['model'], is_training=trainable)
     
@@ -39,6 +40,10 @@ class BoxExtractor(tf.keras.layers.Layer):
         # Collect the feature and ROI outputs
         boxes = detector_dict['detection_boxes']
         scores = detector_dict['detection_scores']
+        # Use the top k scored boxes
+        scores, top_k = tf.nn.top_k(scores, k=self.top_k_boxes)
+        batch_ids = tf.tile(tf.expand_dims(tf.range(batch_size), 1), [1, self.top_k_boxes])
+        boxes = tf.gather_nd(boxes, tf.stack([batch_ids, top_k], 2))
         num_boxes = tf.shape(boxes)[1]
         # Crop inputs according to the ROI bounding boxes
         cropped_inputs = tf.image.crop_and_resize(inputs, tf.reshape(boxes, [-1, 4]), 
