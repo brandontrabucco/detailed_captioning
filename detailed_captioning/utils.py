@@ -5,10 +5,13 @@ Utilities for manipulating images and captions.'''
 import os
 import glove
 import os.path
+import json
+import time
 import numpy as np
 from PIL import Image
 import tensorflow as tf
-from object_detection.utils import label_map_util
+from pycocoapi.coco import COCO
+from pycocoapi.eval import COCOEvalCap
 
 
 def check_runtime():
@@ -76,6 +79,20 @@ def remap_decoder_name_scope(var_list):
         for x in var_list}
 
 
+def get_train_annotations_file():
+    
+    check_runtime()
+    return ('data/coco/annotations/' + 
+             'captions_train2017.json')
+
+
+def get_val_annotations_file():
+    
+    check_runtime()
+    return ('data/coco/annotations/' + 
+             'captions_val2017.json')
+
+
 def list_of_ids_to_string(ids, vocab):
     """Converts the list of ids to a string of captions.
     Args:
@@ -107,3 +124,20 @@ def recursive_ids_to_string(ids, vocab):
     if isinstance(ids[0], list):
         return [recursive_ids_to_string(x, vocab) for x in ids]
     return list_of_ids_to_string(ids, vocab)
+
+
+def coco_get_metrics(captions_dict, eval_dir, annotations_file):
+    """Get the performance metrics on the dataset.
+    """
+    time_now = time.time()
+    with open(os.path.join(eval_dir, "results." + str(time_now) + ".json"), "w") as f:
+        json.dump(captions_dict, f)
+    coco = COCO(annotations_file)
+    cocoRes = coco.loadRes(os.path.join(eval_dir, "results." + str(time_now) + ".json"))
+    cocoEval = COCOEvalCap(coco, cocoRes)
+    cocoEval.params['image_id'] = cocoRes.getImgIds()
+    cocoEval.evaluate()
+    with open(os.path.join(eval_dir, "metrics." + str(time_now) + ".json"), "w") as f:
+        metrics_dump = {metric: float(np.sum(score)) for metric, score in cocoEval.eval.items()}
+        json.dump(metrics_dump, f)
+    return metrics_dump

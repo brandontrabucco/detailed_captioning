@@ -90,11 +90,14 @@ def _convert_dtype(x):
             "image_features": image_features, "object_features": object_features}
 
 
-def _load_dataset_from_tf_records(is_training, is_mini):
-    if is_training:
+def _load_dataset_from_tf_records(mode, is_mini):
+    assert(mode in ["train", "eval", "test"])
+    if mode == "train":
         input_file_pattern = "data/coco{0}/train-?????-of-?????".format("_mini" if is_mini else "")
-    if not is_training:
+    if mode == "eval":
         input_file_pattern = "data/coco{0}/val-?????-of-?????".format("_mini" if is_mini else "")
+    if mode == "test":
+        input_file_pattern = "data/coco{0}/test-?????-of-?????".format("_mini" if is_mini else "")
     data_files = []
     for pattern in input_file_pattern.split(","):
         data_files.extend(tf.gfile.Glob(pattern))
@@ -113,8 +116,9 @@ def _apply_dataset_transformations(dataset, is_training):
     return dataset.map(_convert_dtype)
 
 
-def import_mscoco(is_training=True, batch_size=32, num_epochs=1, num_boxes=8, is_mini=True):
-    dataset = _load_dataset_from_tf_records(is_training, is_mini)
+def import_mscoco(mode="train", batch_size=100, num_epochs=1, num_boxes=8, is_mini=True):
+    is_training = (mode == "train")
+    dataset = _load_dataset_from_tf_records(mode, is_mini)
     dataset = _apply_dataset_transformations(dataset, is_training)
     dataset = dataset.shuffle(buffer_size=1000)
     padded_shapes = {"image": [224, 224, 3], "image_id": [], "input_seq": [None], 

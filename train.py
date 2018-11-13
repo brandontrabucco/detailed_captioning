@@ -26,13 +26,11 @@ if __name__ == "__main__":
         with tf.Graph().as_default():
 
             image_id, image, image_features, object_features, input_seq, target_seq, indicator = (
-                import_mscoco(is_training=True, batch_size=100, num_epochs=100, is_mini=True))
-            
+                import_mscoco(mode="train", batch_size=100, num_epochs=100, is_mini=True))
             image_captioner = ImageCaptioner(300, batch_size=100, beam_size=3, 
                 vocab_size=100000, embedding_size=300)
             logits, ids = image_captioner(image_features, object_features, 
                 seq_inputs=input_seq, lengths=tf.reduce_sum(indicator, axis=1))
-
             tf.losses.sparse_softmax_cross_entropy(target_seq, logits, weights=indicator)
             loss = tf.losses.get_total_loss()
             learning_step = tf.train.GradientDescentOptimizer(1.0).minimize(
@@ -55,7 +53,6 @@ if __name__ == "__main__":
                         a, b, c, d = sess.run([ids, loss, learning_step, image_features])
                         print(PRINT_STRING.format(i, b, " ".join([
                             vocab.id_to_word(x) for x in a[0, :].tolist()])))
-                        
                     except Exception as e:
                         print("Finishing training.")
                         break
