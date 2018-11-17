@@ -2,6 +2,7 @@
 Test the image captioning model with some fake inputs.'''
 
 
+import time
 import itertools
 import tensorflow as tf
 import numpy as np
@@ -23,7 +24,7 @@ def main(unused_argv):
     with tf.Graph().as_default():
 
         image_id, image, spatial_features, object_features, input_seq, target_seq, indicator = (
-            import_mscoco(mode="train", batch_size=100, num_epochs=100, is_mini=True))
+            import_mscoco(mode="train", batch_size=32, num_epochs=100, is_mini=True))
         show_and_tell_cell = ShowAndTellCell(300)
         image_captioner = ImageCaptioner(show_and_tell_cell, vocab, pretrained_matrix)
         logits, ids = image_captioner(lengths=tf.reduce_sum(indicator, axis=1), 
@@ -39,11 +40,19 @@ def main(unused_argv):
             sess.run(tf.variables_initializer(image_captioner.variables))
             if captioner_ckpt is not None:
                 captioner_saver.restore(sess, captioner_ckpt)
+            captioner_saver.save(sess, captioner_ckpt_name)
+            last_save = time.time()
             for i in itertools.count():
-                _ids, _loss, _learning_step = sess.run([ids, loss, learning_step])
+                try:
+                    _ids, _loss, _learning_step = sess.run([ids, loss, learning_step])
+                except:
+                    break
                 print(PRINT_STRING.format(i, _loss, list_of_ids_to_string(_ids[0, :].tolist(), vocab)))
-                captioner_saver.save(sess, captioner_ckpt_name)
-                
+                new_save = time.time()
+                if new_save - last_save > 3600: # save the model every hour
+                    captioner_saver.save(sess, captioner_ckpt_name)
+                    last_save = new_save
+                    
             print("Finishing training.")
         
 

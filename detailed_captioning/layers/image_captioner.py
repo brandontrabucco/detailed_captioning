@@ -19,11 +19,8 @@ class ImageCaptioner(tf.keras.layers.Layer):
         super(ImageCaptioner, self).__init__(name=name, trainable=trainable, **kwargs)
         self.embeddings_map = tf.get_variable("embeddings_map", dtype=tf.float32,
             initializer=tf.constant(word_embeddings, dtype=tf.float32))
-        def init_logits(shape, dtype=None, partition_info=None, verify_shape=None):
-            assert(all([x == y for x, y in zip(shape, word_embeddings.T.shape)]))
-            return tf.constant(word_embeddings.T, dtype=dtype)
         self.logits_layer = tf.layers.Dense(self.vocab_size, name="logits_layer", 
-            kernel_initializer=init_logits)
+            kernel_initializer=tf.contrib.layers.xavier_initializer())
     
     def __call__(self, 
             mean_image_features=None, 

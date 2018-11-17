@@ -26,9 +26,16 @@ class ShowAttendAndTellCell(ImageCaptionCell):
             num_unit_shards=num_unit_shards, num_proj_shards=num_proj_shards,
             forget_bias=forget_bias, state_is_tuple=state_is_tuple,
             activation=activation, reuse=reuse, name=name, dtype=dtype)
-        self.attn_layer = tf.layers.Conv1D(1, 3, kernel_initializer=initializer, 
-            padding="same", name="attention",
-            activation=lambda x: tf.transpose(tf.nn.softmax(tf.transpose(x, [0, 2, 1])), [0, 2, 1]))
+        def softmax_attention(x):
+            x = tf.transpose(x, [0, 3, 2, 1])
+            original_shape = tf.shape(x)
+            x = tf.reshape(x, [original_shape[0], original_shape[1], original_shape[2] * original_shape[3]])
+            x = tf.nn.softmax(x)
+            x = tf.reshape(x, [original_shape[0], original_shape[1], original_shape[2], original_shape[3]])
+            x = tf.transpose(x, [0, 3, 2, 1])
+            return x
+        self.attn_layer = tf.layers.Conv2D(1, [3, 3], kernel_initializer=initializer, 
+            padding="same", name="attention", activation=softmax_attention)
         self._state_size = self.language_lstm.state_size
         self._output_size = self.language_lstm.output_size
 
@@ -41,15 +48,11 @@ class ShowAttendAndTellCell(ImageCaptionCell):
         return self._output_size
 
     def __call__(self, inputs, state):
-        batch_size = tf.shape(self.spatial_image_features)[0]
         image_height = tf.shape(self.spatial_image_features)[1]
         image_width = tf.shape(self.spatial_image_features)[2]
-        image_depth = tf.shape(self.spatial_image_features)[3]
-        flat_image_features = tf.reshape(self.spatial_image_features, [batch_size, 
-            image_height * image_width, image_depth])
-        attn_inputs = tf.concat([ flat_image_features, tile_with_new_axis(
-            tf.concat(state, 1), [image_height * image_width], [1]) ], 2)
-        attended_sif = tf.reduce_sum(flat_image_features * self.attn_layer(attn_inputs), 1)
+        attn_inputs = tf.concat([ self.spatial_image_features, tile_with_new_axis(
+            tf.concat(state, 1), [image_height, image_width], [1, 2]) ], 3)
+        attended_sif = tf.reduce_sum(self.spatial_image_features * self.attn_layer(attn_inputs), [1, 2])
         l_inputs = tf.concat([attended_sif, inputs], 1)
         l_outputs, l_next_state = self.language_lstm(l_inputs, state)
         return l_outputs, l_next_state
