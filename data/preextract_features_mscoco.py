@@ -66,7 +66,7 @@ tf.flags.DEFINE_integer("embedding_size", 300,"")
 tf.flags.DEFINE_integer("top_k_boxes", 8,"")
 tf.flags.DEFINE_integer("image_height", 224,"")
 tf.flags.DEFINE_integer("image_width", 224,"")
-tf.flags.DEFINE_integer("batch_size", 50,"")
+tf.flags.DEFINE_integer("batch_size", 16,"")
 tf.flags.DEFINE_integer("train_dataset_size", 1000000,"")
 tf.flags.DEFINE_integer("val_dataset_size", 100000,"")
 tf.flags.DEFINE_integer("test_dataset_size", 100000,"")
@@ -162,7 +162,8 @@ def _to_sequence_example(image, vocab):
     return sequence_example
 
 
-def _process_image_files(thread_index, ranges, name, images, vocab, num_shards):
+def _process_image_files(thread_index, ranges, name, images, vocab, num_shards, 
+                         run_model_fn):
     """Processes and saves a subset of images as TFRecord files in one thread.
     Args:
       thread_index: Integer thread identifier within [0, len(ranges)].
@@ -172,6 +173,7 @@ def _process_image_files(thread_index, ranges, name, images, vocab, num_shards):
       images: List of ImageMetadata.
       vocab: A Vocabulary object.
       num_shards: Integer number of shards for the output files.
+      run_model_fn: a handle to the model run function.
     """
     # Each thread produces N shards where N = num_shards / num_threads. For
     # instance, if num_shards = 128, and num_threads = 2, then the first thread
@@ -195,8 +197,10 @@ def _process_image_files(thread_index, ranges, name, images, vocab, num_shards):
         shard_counter = 0
         images_in_shard = np.arange(shard_ranges[s], shard_ranges[s + 1], dtype=int)
         
-        for i in images_in_shard:
-            image = images[i]
+        these_images = images[shard_ranges[s]:shard_ranges[s + 1]]
+        these_images = _preextract_dataset(these_images, run_model_fn)
+        
+        for image in these_images:
             sequence_example = _to_sequence_example(image, vocab)
             if sequence_example is not None:
                 writer.write(sequence_example.SerializeToString())
@@ -218,7 +222,7 @@ def _process_image_files(thread_index, ranges, name, images, vocab, num_shards):
     sys.stdout.flush()
 
 
-def _process_dataset(name, images, vocab, num_shards):
+def _process_dataset(name, images, vocab, num_shards, run_model_fn):
     """Processes a complete data set and saves it as a TFRecord.
     Args:
         name: Unique identifier specifying the dataset.
@@ -246,7 +250,7 @@ def _process_dataset(name, images, vocab, num_shards):
     # Launch a thread for each batch.
     print("Launching %d threads for spacings: %s" % (num_threads, ranges))
     for thread_index in xrange(len(ranges)):
-        args = (thread_index, ranges, name, images, vocab, num_shards)
+        args = (thread_index, ranges, name, images, vocab, num_shards, run_model_fn)
         t = threading.Thread(target=_process_image_files, args=args)
         t.start()
         threads.append(t)
@@ -430,12 +434,16 @@ def main(unused_argv):
                                   shape=[None, FLAGS.image_height, FLAGS.image_width, 3])
     boxes, scores, cropped_images = box_extractor(image_tensor)
     # Create the model to extract the image features
-    feature_extractor = FeatureExtractor(is_training=False)
+    feature_extractor = FeatureExtractor(is_training=False, global_pool=False)
     # Compute the ResNet-101 features
-    image_features = tf.reduce_mean(feature_extractor(image_tensor), [1, 2])
-    object_features = tf.reduce_mean(feature_extractor(cropped_images), [1, 2])
+    image_features = feature_extractor(image_tensor)
+    feature_batch = tf.shape(image_features)[0]
+    feature_height = tf.shape(image_features)[1]
+    feature_width = tf.shape(image_features)[2]
+    feature_depth = tf.shape(image_features)[3]
+    object_features = tf.reduce_sum(feature_extractor(cropped_images), [1, 2])
     object_features = tf.reshape(object_features, [
-        tf.shape(image_features)[0], FLAGS.top_k_boxes, tf.shape(image_features)[-1]])
+        feature_batch, FLAGS.top_k_boxes, feature_depth])
     
     print(feature_extractor.variables)
 
@@ -448,14 +456,10 @@ def main(unused_argv):
         
         def run_model_fn(images):
             return sess.run([image_features, object_features], feed_dict={image_tensor: images})
-        
-        train_dataset = _preextract_dataset(train_dataset, run_model_fn)
-        val_dataset = _preextract_dataset(val_dataset, run_model_fn)
-        test_dataset = _preextract_dataset(test_dataset, run_model_fn)
 
-    _process_dataset("train", train_dataset, vocab, FLAGS.train_shards)
-    _process_dataset("val", val_dataset, vocab, FLAGS.val_shards)
-    _process_dataset("test", test_dataset, vocab, FLAGS.test_shards)
+        _process_dataset("train", train_dataset, vocab, FLAGS.train_shards, run_model_fn)
+        _process_dataset("val", val_dataset, vocab, FLAGS.val_shards, run_model_fn)
+        _process_dataset("test", test_dataset, vocab, FLAGS.test_shards, run_model_fn)
 
 
 if __name__ == "__main__":

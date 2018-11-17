@@ -123,8 +123,8 @@ def import_mscoco(mode="train", batch_size=100, num_epochs=1, num_boxes=8, is_mi
     dataset = dataset.shuffle(buffer_size=1000)
     padded_shapes = {"image": [224, 224, 3], "image_id": [], "input_seq": [None], 
                      "target_seq": [None], "indicator": [None], 
-                     "image_features": [2048], "object_features": [num_boxes, 2048]}
-    dataset = dataset.padded_batch(batch_size, padded_shapes=padded_shapes)
+                     "image_features": [7, 7, 2048], "object_features": [num_boxes, 2048]}
+    dataset = dataset.padded_batch(batch_size, padded_shapes=padded_shapes, drop_remainder=True)
     dataset = dataset.repeat(num_epochs)
     iterator = dataset.make_one_shot_iterator()
     x = iterator.get_next()

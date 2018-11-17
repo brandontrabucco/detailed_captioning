@@ -32,6 +32,18 @@ def load_image_from_path(image_path):
         (im_height, im_width, 3)).astype(np.uint8)
 
 
+def tile_with_new_axis(tensor, repeats, locations):
+    
+    nd = zip(repeats, locations)
+    nd = sorted(nd, key=lambda ab: ab[1])
+    repeats, locations = zip(*nd)
+    for i in sorted(locations):
+        tensor = tf.expand_dims(tensor, i)
+    reverse_d = {val: idx for idx, val in enumerate(locations)}
+    tiles = [repeats[reverse_d[i]] if i in locations else 1 for i, _s in enumerate(tensor.shape)]
+    return tf.tile(tensor, tiles)
+
+
 def load_glove(vocab_size=1000, embedding_size=50):
     
     # The config params for loading the vocab and embedding
@@ -45,16 +57,13 @@ def load_glove(vocab_size=1000, embedding_size=50):
 def get_faster_rcnn_config():
     
     check_runtime()
-    return ('ckpts/' + 
-             'faster_rcnn_resnet101_coco/' +
-             'pipeline.config')
+    return ('ckpts/faster_rcnn_resnet101_coco/pipeline.config')
 
 
 def get_faster_rcnn_checkpoint():
 
     check_runtime()
-    return tf.train.latest_checkpoint('ckpts/' + 
-             'faster_rcnn_resnet101_coco/')
+    return tf.train.latest_checkpoint('ckpts/faster_rcnn_resnet101_coco/')
 
 
 def get_resnet_v2_101_checkpoint():
@@ -63,11 +72,36 @@ def get_resnet_v2_101_checkpoint():
     return ('ckpts/resnet_v2_101/resnet_v2_101.ckpt')
 
 
-def get_image_captioner_checkpoint():
+def get_up_down_checkpoint():
 
     check_runtime()
-    return tf.train.latest_checkpoint('ckpts/' + 
-             'caption_model/')
+    name = 'ckpts/up_down/'
+    tf.gfile.MakeDirs(name)
+    return tf.train.latest_checkpoint(name), (name + 'model.ckpt')
+
+
+def get_visual_sentinel_checkpoint():
+
+    check_runtime()
+    name = 'ckpts/visual_sentinel/'
+    tf.gfile.MakeDirs(name)
+    return tf.train.latest_checkpoint(name), (name + 'model.ckpt')
+
+
+def get_show_and_tell_checkpoint():
+
+    check_runtime()
+    name = 'ckpts/show_and_tell/'
+    tf.gfile.MakeDirs(name)
+    return tf.train.latest_checkpoint(name), (name + 'model.ckpt')
+
+
+def get_show_attend_and_tell_checkpoint():
+
+    check_runtime()
+    name = 'ckpts/show_attend_and_tell/'
+    tf.gfile.MakeDirs(name)
+    return tf.train.latest_checkpoint(name), (name + 'model.ckpt')
 
 
 def remap_decoder_name_scope(var_list):
@@ -82,15 +116,13 @@ def remap_decoder_name_scope(var_list):
 def get_train_annotations_file():
     
     check_runtime()
-    return ('data/coco/annotations/' + 
-             'captions_train2017.json')
+    return ('data/coco/annotations/captions_train2017.json')
 
 
 def get_val_annotations_file():
     
     check_runtime()
-    return ('data/coco/annotations/' + 
-             'captions_val2017.json')
+    return ('data/coco/annotations/captions_val2017.json')
 
 
 def list_of_ids_to_string(ids, vocab):
