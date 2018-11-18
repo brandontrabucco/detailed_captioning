@@ -19,8 +19,8 @@ from detailed_captioning.utils import get_train_annotations_file
 from detailed_captioning.inputs.mean_image_and_object_features_only import import_mscoco
 
 
-PRINT_STRING = """({2:.2f} img/sec) iteration: {0:05d}\n    caption: {1}\n    label: {2}"""
-BATCH_SIZE = 50
+PRINT_STRING = """({3:.2f} img/sec) iteration: {0:05d}\n    caption: {1}\n    label: {2}"""
+BATCH_SIZE = 10
 BEAM_SIZE = 16
 
 
