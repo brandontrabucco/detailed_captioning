@@ -77,7 +77,8 @@ def _apply_dataset_transformations(dataset, is_training):
     return dataset.map(_convert_dtype)
 
 
-def import_mscoco(mode="train", shuffle=True, batch_size=100, num_epochs=1, num_boxes=8, is_mini=True):
+def import_mscoco(mode="train", shuffle=True, is_mini=True,
+                  batch_size=100, num_epochs=1, num_boxes=8):
     is_training = (mode == "train")
     dataset = _load_dataset_from_tf_records(mode, is_mini)
     dataset = _apply_dataset_transformations(dataset, is_training)
@@ -94,4 +95,3 @@ def import_mscoco(mode="train", shuffle=True, batch_size=100, num_epochs=1, num_
         x["image_id"], x["input_seq"], x["target_seq"], x["indicator"], 
         x["image_features"], x["object_features"])
     return image_id, image_features, object_features, input_seq, target_seq, indicator
-    

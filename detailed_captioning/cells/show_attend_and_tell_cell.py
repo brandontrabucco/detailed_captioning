@@ -1,10 +1,11 @@
 '''Author: Brandon Trabucco, Copyright 2019
-Implements the Show And Tell image caption architecture proposed by
+Implements the Show Attend And Tell image caption architecture proposed by
 Vinyals, O. et al. https://arxiv.org/abs/1411.4555.'''
 
 
 import tensorflow as tf
 from detailed_captioning.utils import tile_with_new_axis
+from detailed_captioning.utils import collapse_dims
 from detailed_captioning.cells.image_caption_cell import ImageCaptionCell
 
 
@@ -16,7 +17,7 @@ class ShowAttendAndTellCell(ImageCaptionCell):
             num_unit_shards=None, num_proj_shards=None,
             forget_bias=1.0, state_is_tuple=True,
             activation=None, reuse=None, name=None, dtype=None,
-            spatial_image_features=None, **kwargs ):
+            spatial_image_features=None, num_image_features=2048, **kwargs ):
         super(ShowAttendAndTellCell, self).__init__(
             reuse=reuse, name=name, dtype=dtype,
             spatial_image_features=spatial_image_features, **kwargs)
@@ -34,10 +35,10 @@ class ShowAttendAndTellCell(ImageCaptionCell):
             x = tf.reshape(x, [original_shape[0], original_shape[1], original_shape[2], original_shape[3]])
             x = tf.transpose(x, [0, 3, 2, 1])
             return x
-        self.attn_layer = tf.layers.Conv2D(1, [3, 3], kernel_initializer=initializer, 
-            padding="same", name="attention", activation=softmax_attention)
+        self.attn_layer = tf.layers.Dense(1, kernel_initializer=initializer, 
+            name="attention", activation=softmax_attention)
         self._state_size = self.language_lstm.state_size
-        self._output_size = self.language_lstm.output_size
+        self._output_size = self.language_lstm.output_size + num_image_features
 
     @property
     def state_size(self):
@@ -50,12 +51,13 @@ class ShowAttendAndTellCell(ImageCaptionCell):
     def __call__(self, inputs, state):
         image_height = tf.shape(self.spatial_image_features)[1]
         image_width = tf.shape(self.spatial_image_features)[2]
-        attn_inputs = tf.concat([ self.spatial_image_features, tile_with_new_axis(
-            tf.concat(state, 1), [image_height, image_width], [1, 2]) ], 3)
-        attended_sif = tf.reduce_sum(self.spatial_image_features * self.attn_layer(attn_inputs), [1, 2])
-        l_inputs = tf.concat([attended_sif, inputs], 1)
+        image_features = collapse_dims(self.spatial_image_features, [1, 2])
+        attn_inputs = tf.concat([ image_features, tile_with_new_axis(tf.concat(state, 1), [
+            image_height * image_width], [1]) ], 2)
+        attended_features = tf.reduce_sum(image_features * self.attn_layer(attn_inputs), [1])
+        l_inputs = tf.concat([attended_features, inputs], 1)
         l_outputs, l_next_state = self.language_lstm(l_inputs, state)
-        return l_outputs, l_next_state
+        return tf.concat([l_outputs, attended_features], 1), l_next_state
     
     @property
     def trainable_variables(self):

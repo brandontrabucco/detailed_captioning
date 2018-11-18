@@ -8,8 +8,8 @@ import os.path
 import json
 import time
 import numpy as np
-from PIL import Image
 import tensorflow as tf
+from PIL import Image
 from pycocoapi.coco import COCO
 from pycocoapi.eval import COCOEvalCap
 
@@ -44,7 +44,20 @@ def tile_with_new_axis(tensor, repeats, locations):
     return tf.tile(tensor, tiles)
 
 
-def load_glove(vocab_size=1000, embedding_size=50):
+def collapse_dims(tensor, flat_points):
+    
+    flat_size = tf.shape(tensor)[flat_points[0]]
+    for i in flat_points[1:]:
+        flat_size = flat_size * tf.shape(tensor)[i]
+    fixed_points = [i for i in range(len(tensor.shape)) if i not in flat_points]
+    fixed_shape = [tf.shape(tensor)[i] for i in fixed_points]
+    tensor = tf.transpose(tensor, fixed_points + flat_points)
+    final_points = list(range(len(fixed_shape)))
+    final_points.insert(flat_points[0], len(fixed_shape))
+    return tf.transpose(tf.reshape(tensor, fixed_shape + [flat_size]), final_points)
+
+
+def load_glove(vocab_size=100000, embedding_size=300):
     
     # The config params for loading the vocab and embedding
     # See: https://github.com/brandontrabucco/glove/tree/8f11a9b3ab927a15a947683ca7a1fcbc5d9c8ba1
@@ -100,6 +113,14 @@ def get_show_attend_and_tell_checkpoint():
 
     check_runtime()
     name = 'ckpts/show_attend_and_tell/'
+    tf.gfile.MakeDirs(name)
+    return tf.train.latest_checkpoint(name), (name + 'model.ckpt')
+
+
+def get_spatial_attention_checkpoint():
+
+    check_runtime()
+    name = 'ckpts/spatial_attention/'
     tf.gfile.MakeDirs(name)
     return tf.train.latest_checkpoint(name), (name + 'model.ckpt')
 

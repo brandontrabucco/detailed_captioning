@@ -1,5 +1,5 @@
 '''Author: Brandon Trabucco, Copyright 2019
-Implements the Show And Tell image caption architecture proposed by
+Implements the Spatial Attention post-RNN mechanism proposed in  
 Lu, J. et al. https://arxiv.org/abs/1612.01887'''
 
 
@@ -9,7 +9,7 @@ from detailed_captioning.utils import collapse_dims
 from detailed_captioning.cells.image_caption_cell import ImageCaptionCell
 
 
-class VisualSentinelCell(ImageCaptionCell):
+class SpatialAttentionCell(ImageCaptionCell):
 
     def __init__(self, 
             num_units, use_peepholes=False, cell_clip=None,
@@ -18,7 +18,7 @@ class VisualSentinelCell(ImageCaptionCell):
             forget_bias=1.0, state_is_tuple=True,
             activation=None, reuse=None, name=None, dtype=None,
             spatial_image_features=None, num_image_features=2048, **kwargs ):
-        super(VisualSentinelCell, self).__init__(
+        super(SpatialAttentionCell, self).__init__(
             reuse=reuse, name=name, dtype=dtype,
             spatial_image_features=spatial_image_features, **kwargs)
         self.language_lstm = tf.contrib.rnn.LSTMCell(num_units, 
@@ -34,10 +34,6 @@ class VisualSentinelCell(ImageCaptionCell):
             return x
         self.attn_layer = tf.layers.Dense(1, kernel_initializer=initializer, 
             name="attention", activation=softmax_attention)
-        self.sentinel_gate_layer = tf.layers.Dense(num_units, kernel_initializer=initializer, 
-            name="sentinel_gate", activation=tf.nn.sigmoid)
-        self.sentinel_embeddings_layer = tf.layers.Dense(num_image_features, 
-            kernel_initializer=initializer, name="sentinel_embeddings", activation=None)
         self._state_size = self.language_lstm.state_size
         self._output_size = self.language_lstm.output_size + num_image_features
 
@@ -52,23 +48,18 @@ class VisualSentinelCell(ImageCaptionCell):
     def __call__(self, inputs, state):
         l_outputs, l_next_state = self.language_lstm(inputs, state)
         s_inputs = tf.concat([l_outputs, inputs], 1)
-        sentinel_vector = tf.nn.tanh(l_outputs) * self.sentinel_gate_layer(s_inputs)
-        sentinel_embeddings = self.sentinel_embeddings_layer(sentinel_vector)
         image_height = tf.shape(self.spatial_image_features)[1]
         image_width = tf.shape(self.spatial_image_features)[2]
         image_features = collapse_dims(self.spatial_image_features, [1, 2])
-        sentinel_image_features = tf.concat([image_features, tf.expand_dims(sentinel_embeddings, 1)], 1)
-        attn_inputs = tf.nn.tanh(tf.concat([ sentinel_image_features, tile_with_new_axis(
-            l_outputs, [image_height * image_width + 1], [1]) ], 2))
-        attended_sif = tf.reduce_sum(sentinel_image_features * self.attn_layer(attn_inputs), [1])
-        return tf.concat([attended_sif, l_outputs], 1), l_next_state
+        attn_inputs = tf.concat([ image_features, tile_with_new_axis(l_outputs, [
+            image_height * image_width], [1]) ], 2)
+        attended_features = tf.reduce_sum(image_features * self.attn_layer(attn_inputs), [1])
+        return tf.concat([attended_features, l_outputs], 1), l_next_state
     
     @property
     def trainable_variables(self):
         cell_variables = (self.language_lstm.trainable_variables 
-                          + self.attn_layer.trainable_variables 
-                          + self.sentinel_gate_layer.trainable_variables 
-                          + self.sentinel_embeddings_layer.trainable_variables)
+                          + self.attn_layer.trainable_variables)
         return cell_variables
     
     @property
@@ -78,9 +69,7 @@ class VisualSentinelCell(ImageCaptionCell):
     @property
     def variables(self):
         cell_variables = (self.language_lstm.variables 
-                          + self.attn_layer.variables
-                          + self.sentinel_gate_layer.variables 
-                          + self.sentinel_embeddings_layer.variables)
+                          + self.attn_layer.variables)
         return cell_variables
     
     @property

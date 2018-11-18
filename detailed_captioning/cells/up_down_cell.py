@@ -46,9 +46,13 @@ class UpDownCell(ImageCaptionCell):
             num_unit_shards=num_unit_shards, num_proj_shards=num_proj_shards,
             forget_bias=forget_bias, state_is_tuple=state_is_tuple,
             activation=activation, reuse=reuse, name=name, dtype=dtype)
-        self.attn_layer = tf.layers.Conv1D(1, 3, kernel_initializer=initializer, 
-            padding="same", name="attention",
-            activation=lambda x: tf.transpose(tf.nn.softmax(tf.transpose(x, [0, 2, 1])), [0, 2, 1]))
+        def softmax_attention(x):
+            x = tf.transpose(x, [0, 2, 1])
+            x = tf.nn.softmax(x)
+            x = tf.transpose(x, [0, 2, 1])
+            return x
+        self.attn_layer = tf.layers.Dense(1, kernel_initializer=initializer, 
+            name="attention", activation=softmax_attention)
         self._state_size = UpDownStateTuple(
             self.visual_lstm.state_size, self.language_lstm.state_size)
         self._output_size = self.language_lstm.output_size
