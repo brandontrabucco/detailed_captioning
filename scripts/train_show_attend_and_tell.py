@@ -9,13 +9,13 @@ import numpy as np
 from detailed_captioning.layers.image_captioner import ImageCaptioner
 from detailed_captioning.cells.show_attend_and_tell_cell import ShowAttendAndTellCell
 from detailed_captioning.utils import load_glove
-from detailed_captioning.utils import get_resnet_v2_101_checkpoint
 from detailed_captioning.utils import get_show_attend_and_tell_checkpoint 
 from detailed_captioning.utils import list_of_ids_to_string
-from detailed_captioning.inputs.mscoco import import_mscoco
+from detailed_captioning.inputs.spatial_image_features_only import import_mscoco
 
 
-PRINT_STRING = """Training iteration {0:07d} loss was {1:.7f} caption was {2}"""
+PRINT_STRING = """({3:.2f} img/sec) iteration: {0:05d} loss: {1:.5f}\n    caption: {2}"""
+BATCH_SIZE = 80
 
 
 def main(unused_argv):
@@ -23,8 +23,8 @@ def main(unused_argv):
     vocab, pretrained_matrix = load_glove(vocab_size=100000, embedding_size=300)
     with tf.Graph().as_default():
 
-        image_id, image, spatial_features, object_features, input_seq, target_seq, indicator = (
-            import_mscoco(mode="train", batch_size=32, num_epochs=100, is_mini=True))
+        image_id, spatial_features, input_seq, target_seq, indicator = import_mscoco(
+            mode="train", batch_size=BATCH_SIZE, num_epochs=100, is_mini=True)
         show_attend_and_tell_cell = ShowAttendAndTellCell(300)
         image_captioner = ImageCaptioner(show_attend_and_tell_cell, vocab, pretrained_matrix)
         logits, ids = image_captioner(lengths=tf.reduce_sum(indicator, axis=1), 
@@ -43,16 +43,20 @@ def main(unused_argv):
             captioner_saver.save(sess, captioner_ckpt_name)
             last_save = time.time()
             for i in itertools.count():
+                time_start = time.time()
                 try:
                     _ids, _loss, _learning_step = sess.run([ids, loss, learning_step])
                 except:
                     break
-                print(PRINT_STRING.format(i, _loss, list_of_ids_to_string(_ids[0, :].tolist(), vocab)))
+                print(PRINT_STRING.format(
+                    i, _loss, list_of_ids_to_string(_ids[0, :].tolist(), vocab), 
+                    BATCH_SIZE / (time.time() - time_start)))
                 new_save = time.time()
                 if new_save - last_save > 3600: # save the model every hour
                     captioner_saver.save(sess, captioner_ckpt_name)
                     last_save = new_save
                     
+            captioner_saver.save(sess, captioner_ckpt_name)
             print("Finishing training.")
         
 

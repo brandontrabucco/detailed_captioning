@@ -20,7 +20,7 @@ from detailed_captioning.utils import list_of_ids_to_string
 from detailed_captioning.utils import recursive_ids_to_string
 from detailed_captioning.utils import coco_get_metrics
 from detailed_captioning.utils import get_train_annotations_file
-from detailed_captioning.inputs.mscoco import import_mscoco
+from detailed_captioning.inputs.spatial_image_features_only import import_mscoco
 
 
 if __name__ == "__main__":
@@ -29,7 +29,7 @@ if __name__ == "__main__":
 
     with tf.Graph().as_default():
 
-        image_id, image, spatial_features, object_features, input_seq, target_seq, indicator = (
+        image_id, spatial_features, input_seq, target_seq, indicator = (
             import_mscoco(mode="train", batch_size=10, num_epochs=1, is_mini=True))
         image_captioner = ImageCaptioner(ShowAttendAndTellCell(300), vocab, pretrained_matrix, 
             trainable=False, beam_size=16)
