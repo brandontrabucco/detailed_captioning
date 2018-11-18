@@ -32,13 +32,13 @@ class VisualSentinelCell(ImageCaptionCell):
             x = tf.transpose(x, [0, 2, 1])
             return x
         self.attn_layer = tf.layers.Dense(1, kernel_initializer=initializer, 
-            reuse=reuse, name="attention", activation=softmax_attention)
+            name="attention", activation=softmax_attention)
         self.sentinel_gate_layer = tf.layers.Dense(num_units, kernel_initializer=initializer, 
-            reuse=reuse, name="sentinel_gate", activation=tf.nn.sigmoid)
-        self.sentinel_embeddings_layer = tf.layers.Dense(num_image_features, kernel_initializer=initializer, 
-            reuse=reuse, name="sentinel_embeddings", activation=None)
+            name="sentinel_gate", activation=tf.nn.sigmoid)
+        self.sentinel_embeddings_layer = tf.layers.Dense(num_image_features, 
+            kernel_initializer=initializer, name="sentinel_embeddings", activation=None)
         self._state_size = self.language_lstm.state_size
-        self._output_size = self.language_lstm.output_size
+        self._output_size = num_image_features
 
     @property
     def state_size(self):
@@ -49,7 +49,7 @@ class VisualSentinelCell(ImageCaptionCell):
         return self._output_size
 
     def __call__(self, inputs, state):
-        l_outputs, l_next_state = self.language_lstm(inputs, state)
+        _l_outputs, l_next_state = self.language_lstm(inputs, state)
         s_inputs = tf.concat([l_next_state.h, inputs], 1)
         sentinel_vector = tf.nn.tanh(l_next_state.c) * self.sentinel_gate_layer(s_inputs)
         sentinel_embeddings = self.sentinel_embeddings_layer(sentinel_vector)
@@ -61,7 +61,7 @@ class VisualSentinelCell(ImageCaptionCell):
             image_height * image_width, image_depth])
         sentinel_image_features = tf.concat([image_features, tf.expand_dims(sentinel_embeddings, 1)], 1)
         attn_inputs = tf.nn.tanh(tf.concat([ sentinel_image_features, tile_with_new_axis(
-            tf.concat(state, 1), [image_height * image_width + 1], [1]) ], 3))
+            tf.concat(state, 1), [image_height * image_width + 1], [1]) ], 2))
         attended_sif = tf.reduce_sum(sentinel_image_features * self.attn_layer(attn_inputs), [1])
         return attended_sif, l_next_state
     

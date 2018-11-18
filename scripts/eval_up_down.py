@@ -19,15 +19,20 @@ from detailed_captioning.utils import get_train_annotations_file
 from detailed_captioning.inputs.mean_image_and_object_features_only import import_mscoco
 
 
+PRINT_STRING = """({2:.2f} img/sec) iteration: {0:05d}\n    caption: {1}\n    label: {2}"""
+BATCH_SIZE = 50
+BEAM_SIZE = 16
+
+
 if __name__ == "__main__":
     
     vocab, pretrained_matrix = load_glove(vocab_size=100000, embedding_size=300)
     with tf.Graph().as_default():
 
         image_id, mean_features, object_features, input_seq, target_seq, indicator = (
-            import_mscoco(mode="train", batch_size=10, num_epochs=1, is_mini=True))
+            import_mscoco(mode="train", batch_size=BATCH_SIZE, num_epochs=1, is_mini=True))
         image_captioner = ImageCaptioner(UpDownCell(300), vocab, pretrained_matrix, 
-            trainable=False, beam_size=16)
+            trainable=False, beam_size=BEAM_SIZE)
         logits, ids = image_captioner(mean_image_features=mean_features,
             mean_object_features=object_features)
         captioner_saver = tf.train.Saver(var_list=remap_decoder_name_scope(image_captioner.variables))
@@ -41,6 +46,7 @@ if __name__ == "__main__":
             json_dump = []
 
             for i in itertools.count():
+                time_start = time.time()
                 try:
                     _ids, _target_seq, _image_id = sess.run([ids, target_seq, image_id])
                 except:
@@ -52,7 +58,8 @@ if __name__ == "__main__":
                     if not j in used_ids:
                         used_ids.add(j)
                         json_dump.append({"image_id": j, "caption": x})
-                print("Iteration {0}".format(i)) 
+                print(PRINT_STRING.format(i, the_captions[0], the_labels[0], 
+                    BATCH_SIZE / (time.time() - time_start))) 
 
             print("Finishing evaluating.")
             coco_get_metrics(json_dump, "ckpts/up_down/", get_train_annotations_file())
