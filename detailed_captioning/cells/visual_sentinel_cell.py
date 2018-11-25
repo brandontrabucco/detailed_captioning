@@ -51,9 +51,8 @@ class VisualSentinelCell(ImageCaptionCell):
 
     def __call__(self, inputs, state):
         l_outputs, l_next_state = self.language_lstm(inputs, state)
-        s_inputs = tf.concat([l_outputs, inputs], 1)
-        sentinel_vector = tf.nn.tanh(l_outputs) * self.sentinel_gate_layer(s_inputs)
-        sentinel_embeddings = self.sentinel_embeddings_layer(sentinel_vector)
+        sentinel_embeddings = self.sentinel_embeddings_layer(tf.nn.tanh(
+            l_next_state.c) * self.sentinel_gate_layer(tf.concat([state.h, inputs], 1)))
         image_height = tf.shape(self.spatial_image_features)[1]
         image_width = tf.shape(self.spatial_image_features)[2]
         image_features = collapse_dims(self.spatial_image_features, [1, 2])

@@ -15,7 +15,11 @@ from detailed_captioning.inputs.mean_image_features_only import import_mscoco
 
 
 PRINT_STRING = """({3:.2f} img/sec) iteration: {0:05d} loss: {1:.5f}\n    caption: {2}"""
-BATCH_SIZE = 80
+BATCH_SIZE = 100
+INITIAL_LEARNING_RATE = 2.0
+TRAINING_EXAMPLES = 5000
+EPOCHS_PER_DECAY = 8
+DECAY_RATE = 1.0
 
 
 def main(unused_argv):
@@ -31,32 +35,45 @@ def main(unused_argv):
             mean_image_features=mean_features, seq_inputs=input_seq)
         tf.losses.sparse_softmax_cross_entropy(target_seq, logits, weights=indicator)
         loss = tf.losses.get_total_loss()
-        learning_step = tf.train.GradientDescentOptimizer(1.0).minimize(loss, 
-            var_list=image_captioner.variables)
+        
+        global_step = tf.train.get_or_create_global_step()
+        learning_rate = tf.train.exponential_decay(INITIAL_LEARNING_RATE, 
+            global_step, (TRAINING_EXAMPLES // BATCH_SIZE) * EPOCHS_PER_DECAY, 
+            DECAY_RATE, staircase=True)
+        learning_step = tf.train.GradientDescentOptimizer(learning_rate).minimize(loss, 
+            var_list=image_captioner.variables, global_step=global_step)
 
-        captioner_saver = tf.train.Saver(var_list=image_captioner.variables)
+        captioner_saver = tf.train.Saver(var_list=image_captioner.variables + [global_step])
         captioner_ckpt, captioner_ckpt_name = get_show_and_tell_checkpoint()
         with tf.Session() as sess:
-            sess.run(tf.variables_initializer(image_captioner.variables))
+            
             if captioner_ckpt is not None:
                 captioner_saver.restore(sess, captioner_ckpt)
-            captioner_saver.save(sess, captioner_ckpt_name)
+            else:
+                sess.run(tf.variables_initializer(image_captioner.variables + [global_step]))
+            captioner_saver.save(sess, captioner_ckpt_name, global_step=global_step)
             last_save = time.time()
+            
             for i in itertools.count():
+                
                 time_start = time.time()
                 try:
                     _ids, _loss, _learning_step = sess.run([ids, loss, learning_step])
                 except:
                     break
+                    
+                iteration = sess.run(global_step)
+                    
                 print(PRINT_STRING.format(
-                    i, _loss, list_of_ids_to_string(_ids[0, :].tolist(), vocab), 
+                    iteration, _loss, list_of_ids_to_string(_ids[0, :].tolist(), vocab), 
                     BATCH_SIZE / (time.time() - time_start)))
+                
                 new_save = time.time()
                 if new_save - last_save > 3600: # save the model every hour
-                    captioner_saver.save(sess, captioner_ckpt_name)
+                    captioner_saver.save(sess, captioner_ckpt_name, global_step=global_step)
                     last_save = new_save
                     
-            captioner_saver.save(sess, captioner_ckpt_name)
+            captioner_saver.save(sess, captioner_ckpt_name, global_step=global_step)
             print("Finishing training.")
         
 

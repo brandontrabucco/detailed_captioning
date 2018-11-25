@@ -4,12 +4,18 @@ Utilities for manipulating images and captions.'''
 
 import os
 import glove
+import glove.configuration
+import glove.heuristic
+import glove.tagger
 import os.path
 import json
 import time
 import numpy as np
 import tensorflow as tf
+import pickle as pkl
+import nltk
 from PIL import Image
+from nltk.corpus import brown
 from pycocoapi.coco import COCO
 from pycocoapi.eval import COCOEvalCap
 
@@ -65,6 +71,15 @@ def load_glove(vocab_size=100000, embedding_size=300):
         embedding=embedding_size, filedir="/home/ubuntu/research/data/glove/embeddings/",
         length=vocab_size, start_word="<S>", end_word="</S>", unk_word="<UNK>")
     return glove.load(config)
+
+
+def load_tagger():
+    
+    # The config params for loading the POS tagger
+    # See: https://github.com/brandontrabucco/glove/tree/8f11a9b3ab927a15a947683ca7a1fcbc5d9c8ba1
+    config = glove.configuration.TaggerConfiguration(
+        tagger_dir="/home/ubuntu/research/data/glove/tagger/")
+    return glove.tagger.load(config)
 
 
 def get_faster_rcnn_config():

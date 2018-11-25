@@ -109,7 +109,7 @@ def import_mscoco(mode="train", shuffle=True, is_mini=True,
     dataset = _load_dataset_from_tf_records(mode, is_mini)
     dataset = _apply_dataset_transformations(dataset, is_training)
     if shuffle:
-        dataset = dataset.shuffle(buffer_size=1000)
+        dataset = dataset.shuffle(buffer_size=10000)
     padded_shapes = {"image": [224, 224, 3], "image_id": [], "input_seq": [None], 
                      "target_seq": [None], "indicator": [None]}
     dataset = dataset.padded_batch(batch_size, padded_shapes=padded_shapes, drop_remainder=True)
