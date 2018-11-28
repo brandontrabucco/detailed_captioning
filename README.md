@@ -31,4 +31,19 @@ cd models/research/object_detection/
 pip install -e .
 ```
 
+For evaluation purposes on the COCO dataset, we use Tsung-Yi Lin's repository. Download and install the [coco-caption](https://github.com/tylin/coco-caption/tree/3a9afb2682141a03e1cdc02b0df6770d2c884f6f) repository and edit to suite your needs.
+
+Finally, all of the models we implement use the [GloVe](https://nlp.stanford.edu/projects/glove/) word vectors to initialize the word embeddings matrix. We provide a clean implementation of a cached data loader for glove, with a conveniet vocabulary format, and various useful utility functions. Download and install our [data loader](https://github.com/brandontrabucco/glove/tree/3d9cb98573119b0a3d1f3e6405881b9156ad9421) from github.
+
+```
+git clone https://gitub.com/brandontrabucco/glove.git
+cd glove/
+pip install -r requirements.txt
+cd embeddings/
+chmod +x download_and_extract.sh
+download_and_extract.sh
+cd ../
+python tests.py
+```
+
 
