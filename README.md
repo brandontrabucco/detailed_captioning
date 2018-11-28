@@ -5,7 +5,7 @@ Thanks for reading my code! This repository is my research workspace for detaile
 
 ## Image Captioning
 
-End-to-end approaches for image captioning achieve great success. These architectures use neural networks to encode an image into a latent featurized representation. These features are decoded using a second neural network into a sequence of word ids. [Show And Tell](https://github.com/brandontrabucco/detailed_captioning/edit/master/README.md) is the among first generation of the monolithic CNN-encoder, and RNN-decoder framework for end-to-end image captioning. The likelihood of the ground truth captions given the image is maximized using gradient descent. More recent approaches focus on image-attention, object-detection, and styling captions.
+End-to-end approaches for image captioning achieve great success. These architectures use neural networks to encode an image into a latent featurized representation. These features are decoded using a second neural network into a sequence of word ids. [Show And Tell](https://arxiv.org/abs/1411.4555) is the among first generation of the monolithic CNN-encoder, and RNN-decoder framework for end-to-end image captioning. The likelihood of the ground truth captions given the image is maximized using gradient descent. More recent approaches focus on image-attention, object-detection, and styling captions.
 
 
 ## Motivation
