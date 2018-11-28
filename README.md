@@ -15,6 +15,20 @@ The number of recent papers (since 2015) that claim to achieve state-of-the-art 
 
 ## Installation
 
+This repository depends on the TensorFlow automatic differentiation library, and a few other computation libraries. Install the following python packages using pip.
 
+```
+pip install Pillow
+pip install numpy
+pip install tensorflow
+```
+
+Additionally, this repository relies on a few external code bases from github. In particular, download the TensorFlow [object detection](https://github.com/tensorflow/models/tree/03612984e9f7565fed185977d251bbc23665396e/research/object_detection) API and run the setup script.
+
+```
+git clone https://github.com/tensorflow/models.git 
+cd models/research/object_detection/
+pip install -e .
+```
 
 
