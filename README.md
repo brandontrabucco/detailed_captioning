@@ -46,4 +46,11 @@ cd ../
 python tests.py
 ```
 
+## Data Preprocessing
+
+...
+
+## Training
+
+...
 
