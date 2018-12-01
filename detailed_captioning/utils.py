@@ -140,6 +140,14 @@ def get_spatial_attention_checkpoint():
     return tf.train.latest_checkpoint(name), (name + 'model.ckpt')
 
 
+def get_best_first_checkpoint():
+
+    check_runtime()
+    name = 'ckpts/best_first/'
+    tf.gfile.MakeDirs(name)
+    return tf.train.latest_checkpoint(name), (name + 'model.ckpt')
+
+
 def remap_decoder_name_scope(var_list):
     """Bug fix for running beam search decoder and dynamic rnn."""
     return {

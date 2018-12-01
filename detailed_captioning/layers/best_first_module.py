@@ -3,6 +3,7 @@ Implements the Best First Module for image captioning."""
 
 
 import tensorflow as tf
+from detailed_captioning.utils import tile_with_new_axis
 
 
 class BestFirstModule(tf.layers.Layer):
@@ -10,7 +11,7 @@ class BestFirstModule(tf.layers.Layer):
     def __init__(self, word_embeddings):
 
         self.word_embeddings = tf.get_variable("word_embeddings", 
-            initializer=word_embeddings, dtype=tf.float32)
+            initializer=tf.constant(word_embeddings, dtype=tf.float32), dtype=tf.float32)
         self.fw_cell = tf.contrib.rnn.LSTMCell(word_embeddings.shape[1])
         self.bw_cell = tf.contrib.rnn.LSTMCell(word_embeddings.shape[1])
         self.pointer_layer = tf.layers.Dense(1)

@@ -183,27 +183,30 @@ def _process_best_first(images, vocab, tagger):
     """
     best_first_images = []
     for image in images:
+        
         caption = image.captions[0]
-        #caption = vocab.id_to_word(caption)
         sorted_words, insertion_slots = make_insertion_sequence(caption, vocab, tagger)
-        sorted_ids = vocab.word_to_id(sorted_words)
+        sorted_ids = vocab.word_to_id(sorted_words) + [vocab.end_id]
+        insertion_slots = insertion_slots + [len(insertion_slots)]
         running_ids = [vocab.start_id, vocab.end_id]
         previous_id = vocab.start_id
-        for word_id, pointer in zip(sorted_ids, insertion_slots):
-            next_id = sorted_ids.pop(0)
-            pointer = insertion_slots.pop(0)
+        
+        for next_id, pointer in zip(sorted_ids, insertion_slots):
+            
             best_first_images.append(BestFirstMetadata(
                 image_id=image.image_id, 
                 filename=image.filename, 
                 captions=image.captions, 
                 image_features=image.image_features, 
                 object_features=image.object_features,
-                running_ids=running_ids, 
+                running_ids=running_ids.copy(), 
                 previous_id=previous_id, 
                 next_id=next_id, 
                 pointer=pointer))
+            
             running_ids.insert(pointer + 1, next_id)
             previous_id = next_id
+            
     return best_first_images
         
 
@@ -317,9 +320,8 @@ def _process_caption(caption):
     Returns:
         A list of strings; the tokenized caption.
     """
-    tokenized_caption = [FLAGS.start_word]
+    tokenized_caption = []
     tokenized_caption.extend(nltk.tokenize.word_tokenize(caption.lower()))
-    tokenized_caption.append(FLAGS.end_word)
     return tokenized_caption
 
 
@@ -473,10 +475,6 @@ def main(unused_argv):
         random.shuffle(test_dataset)
         test_dataset = test_dataset[:FLAGS.test_dataset_size]
 
-    # Create vocabulary from the glove embeddings.
-    vocab, _ = load_glove(vocab_size=FLAGS.vocab_size, embedding_size=FLAGS.embedding_size)
-    tagger = load_tagger()
-
     # Create the model to extract image boxes
     box_extractor = BoxExtractor(get_faster_rcnn_config(), 
                                  top_k_boxes=FLAGS.top_k_boxes, trainable=False)
@@ -491,6 +489,10 @@ def main(unused_argv):
     feature_depth = tf.shape(image_features)[1]
     object_features = tf.reduce_mean(feature_extractor(cropped_images), [1, 2])
     object_features = tf.reshape(object_features, [feature_batch, FLAGS.top_k_boxes, feature_depth])
+        
+    # Create vocabulary from the glove embeddings.
+    vocab, _ = load_glove(vocab_size=FLAGS.vocab_size, embedding_size=FLAGS.embedding_size)
+    tagger = load_tagger()
 
     with tf.Session() as sess:
 

@@ -37,7 +37,7 @@ def _process_tf_record_proto(serialized_proto):
     image_id, running_ids = (
         context["image/image_id"], sequence["image/running_ids"])
     previous_id, next_id, pointer = (
-        context["previous_id"], context["next_id"], context["pointer"])
+        context["image/previous_id"], context["image/next_id"], context["image/pointer"])
     image_features = sequence["image/image_features"]
     return {"image_id": image_id, "running_ids": running_ids, 
             "previous_id": previous_id, "next_id": next_id, "pointer": pointer,
