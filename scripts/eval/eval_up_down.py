@@ -20,8 +20,11 @@ from detailed_captioning.inputs.mean_image_and_object_features_only import impor
 
 
 PRINT_STRING = """({3:.2f} img/sec) iteration: {0:05d}\n    caption: {1}\n    label: {2}"""
-BATCH_SIZE = 10
-BEAM_SIZE = 16
+tf.logging.set_verbosity(tf.logging.INFO)
+tf.flags.DEFINE_integer("batch_size", 1, "")
+tf.flags.DEFINE_integer("beam_size", 3, "")
+tf.flags.DEFINE_boolean("is_mini", False, "")
+FLAGS = tf.flags.FLAGS
 
 
 if __name__ == "__main__":
@@ -29,10 +32,10 @@ if __name__ == "__main__":
     vocab, pretrained_matrix = load_glove(vocab_size=100000, embedding_size=300)
     with tf.Graph().as_default():
 
-        image_id, mean_features, object_features, input_seq, target_seq, indicator = (
-            import_mscoco(mode="train", batch_size=BATCH_SIZE, num_epochs=1, is_mini=True))
+        image_id, mean_features, object_features, input_seq, target_seq, indicator = import_mscoco(
+            mode="train", batch_size=FLAGS.batch_size, num_epochs=1, is_mini=FLAGS.is_mini)
         image_captioner = ImageCaptioner(UpDownCell(300), vocab, pretrained_matrix, 
-            trainable=False, beam_size=BEAM_SIZE)
+            trainable=False, beam_size=FLAGS.beam_size)
         logits, ids = image_captioner(mean_image_features=mean_features,
             mean_object_features=object_features)
         captioner_saver = tf.train.Saver(var_list=remap_decoder_name_scope(image_captioner.variables))
@@ -59,7 +62,7 @@ if __name__ == "__main__":
                         used_ids.add(j)
                         json_dump.append({"image_id": j, "caption": x})
                 print(PRINT_STRING.format(i, the_captions[0], the_labels[0], 
-                    BATCH_SIZE / (time.time() - time_start))) 
+                    FLAGS.batch_size / (time.time() - time_start))) 
 
             print("Finishing evaluating.")
             coco_get_metrics(json_dump, "ckpts/up_down/", get_train_annotations_file())

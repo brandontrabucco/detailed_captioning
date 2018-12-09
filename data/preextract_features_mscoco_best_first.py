@@ -82,9 +82,8 @@ PreextractedMetadata = namedtuple("PreextractedMetadata",
                            ["image_id", "filename", "captions", "image_features", "object_features"])
 
 BestFirstMetadata = namedtuple("PreextractedMetadata",
-                           ["image_id", "filename", "captions", 
-                            "image_features", "object_features",
-                            "running_ids", "previous_id", "next_id", "pointer"])
+                           ["image_id", "filename", "captions", "image_features", "object_features",
+                            "running_ids", "running_ids_splits", "word_ids", "pointer_ids"])
 
 class ImageDecoder(object):
     """Helper class for decoding images in TensorFlow."""
@@ -150,9 +149,6 @@ def _to_sequence_example(image, vocab):
 
     context = tf.train.Features(feature={
         "image/image_id": _int64_feature(image.image_id),
-        "image/previous_id": _int64_feature(image.previous_id),
-        "image/next_id": _int64_feature(image.next_id),
-        "image/pointer": _int64_feature(image.pointer),
         "image/data": _bytes_feature(encoded_image),
     })
     assert len(image.captions) == 1
@@ -162,6 +158,9 @@ def _to_sequence_example(image, vocab):
         "image/caption": _bytes_feature_list([bytes(c, "utf-8") for c in caption]),
         "image/caption_ids": _int64_feature_list(caption_ids),
         "image/running_ids": _int64_feature_list(image.running_ids),
+        "image/running_ids_splits": _int64_feature_list(image.running_ids_splits),
+        "image/word_ids": _int64_feature_list(image.word_ids),
+        "image/pointer_ids": _int64_feature_list(image.pointer_ids),
         "image/image_features": _float_feature_list(image.image_features.flatten().tolist()),
         "image/image_features_shape": _int64_feature_list(image.image_features.shape),
         "image/object_features": _float_feature_list(image.object_features.flatten().tolist()),
@@ -185,27 +184,28 @@ def _process_best_first(images, vocab, tagger):
     for image in images:
         
         caption = image.captions[0]
-        sorted_words, insertion_slots = make_insertion_sequence(caption, vocab, tagger)
-        sorted_ids = vocab.word_to_id(sorted_words) + [vocab.end_id]
-        insertion_slots = insertion_slots + [len(insertion_slots)]
-        running_ids = [vocab.start_id, vocab.end_id]
-        previous_id = vocab.start_id
+        word_ids, pointer_ids = make_insertion_sequence(caption, vocab, tagger)
+        word_ids = vocab.word_to_id(word_ids) + [vocab.end_id]
+        pointer_ids = pointer_ids + [len(pointer_ids)]
+        partial_caption = [vocab.start_id, vocab.end_id]
+        running_ids = partial_caption.copy()
+        running_ids_splits = [2]
         
-        for next_id, pointer in zip(sorted_ids, insertion_slots):
+        for next_id, pointer in zip(word_ids, pointer_ids):
+            partial_caption.insert(pointer + 1, next_id)
+            running_ids.extend(partial_caption.copy())
+            running_ids_splits.append(len(partial_caption))
             
-            best_first_images.append(BestFirstMetadata(
-                image_id=image.image_id, 
-                filename=image.filename, 
-                captions=image.captions, 
-                image_features=image.image_features, 
-                object_features=image.object_features,
-                running_ids=running_ids.copy(), 
-                previous_id=previous_id, 
-                next_id=next_id, 
-                pointer=pointer))
-            
-            running_ids.insert(pointer + 1, next_id)
-            previous_id = next_id
+        best_first_images.append(BestFirstMetadata(
+            image_id=image.image_id, 
+            filename=image.filename, 
+            captions=image.captions, 
+            image_features=image.image_features, 
+            object_features=image.object_features,
+            running_ids=running_ids, 
+            running_ids_splits=running_ids_splits,
+            word_ids=word_ids, 
+            pointer_ids=pointer_ids))
             
     return best_first_images
         

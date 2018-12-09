@@ -28,12 +28,9 @@ class ShowAttendAndTellCell(ImageCaptionCell):
             forget_bias=forget_bias, state_is_tuple=state_is_tuple,
             activation=activation, reuse=reuse, name=name, dtype=dtype)
         def softmax_attention(x):
-            x = tf.transpose(x, [0, 3, 2, 1])
-            original_shape = tf.shape(x)
-            x = tf.reshape(x, [original_shape[0], original_shape[1], original_shape[2] * original_shape[3]])
+            x = tf.transpose(x, [0, 2, 1])
             x = tf.nn.softmax(x)
-            x = tf.reshape(x, [original_shape[0], original_shape[1], original_shape[2], original_shape[3]])
-            x = tf.transpose(x, [0, 3, 2, 1])
+            x = tf.transpose(x, [0, 2, 1])
             return x
         self.attn_layer = tf.layers.Dense(1, kernel_initializer=initializer, 
             name="attention", activation=softmax_attention)

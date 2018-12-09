@@ -156,8 +156,7 @@ def _to_sequence_example(image, vocab):
         "image/object_features": _float_feature_list(image.object_features.flatten().tolist()),
         "image/object_features_shape": _int64_feature_list(image.object_features.shape),
     })
-    sequence_example = tf.train.SequenceExample(
-        context=context, feature_lists=feature_lists)
+    sequence_example = tf.train.SequenceExample(context=context, feature_lists=feature_lists)
 
     return sequence_example
 
@@ -438,14 +437,9 @@ def main(unused_argv):
     # Compute the ResNet-101 features
     image_features = feature_extractor(image_tensor)
     feature_batch = tf.shape(image_features)[0]
-    feature_height = tf.shape(image_features)[1]
-    feature_width = tf.shape(image_features)[2]
     feature_depth = tf.shape(image_features)[3]
-    object_features = tf.reduce_sum(feature_extractor(cropped_images), [1, 2])
-    object_features = tf.reshape(object_features, [
-        feature_batch, FLAGS.top_k_boxes, feature_depth])
-    
-    print(feature_extractor.variables)
+    object_features = tf.reduce_mean(feature_extractor(cropped_images), [1, 2])
+    object_features = tf.reshape(object_features, [feature_batch, FLAGS.top_k_boxes, feature_depth])
 
     with tf.Session() as sess:
 

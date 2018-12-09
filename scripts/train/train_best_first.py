@@ -7,6 +7,7 @@ import itertools
 import tensorflow as tf
 import numpy as np
 from detailed_captioning.layers.best_first_module import BestFirstModule
+from detailed_captioning.cells.show_and_tell_cell import ShowAndTellCell
 from detailed_captioning.utils import load_glove
 from detailed_captioning.utils import get_best_first_checkpoint 
 from detailed_captioning.utils import list_of_ids_to_string
@@ -23,11 +24,11 @@ def main(unused_argv):
     vocab, pretrained_matrix = load_glove(vocab_size=100000, embedding_size=300)
     with tf.Graph().as_default():
 
-        image_id, running_ids, indicator, previous_id, next_id, pointer, image_features = (
+        image_id, running_ids, indicator, next_id, pointer, image_features = (
             import_mscoco(mode="train", batch_size=BATCH_SIZE, num_epochs=100, is_mini=True))
-        best_first_module = BestFirstModule(pretrained_matrix)
-        pointer_logits, word_logits = best_first_module(
-            image_features, running_ids, previous_id, indicators=indicator, pointer_ids=pointer)
+        best_first_module = BestFirstModule(ShowAndTellCell(300), vocab, pretrained_matrix)
+        pointer_logits, word_logits = best_first_module(running_ids,
+            mean_image_features=image_features, pointer_ids=pointer, indicators=indicator)
         tf.losses.sparse_softmax_cross_entropy(pointer, pointer_logits)
         tf.losses.sparse_softmax_cross_entropy(next_id, word_logits)
         loss = tf.losses.get_total_loss()

@@ -9,6 +9,7 @@ import itertools
 import tensorflow as tf
 import numpy as np
 from detailed_captioning.layers.best_first_module import BestFirstModule
+from detailed_captioning.cells.show_and_tell_cell import ShowAndTellCell
 from detailed_captioning.utils import check_runtime
 from detailed_captioning.utils import load_glove
 from detailed_captioning.utils import load_image_from_path
@@ -22,7 +23,7 @@ from detailed_captioning.utils import get_train_annotations_file
 from detailed_captioning.inputs.mean_image_features_best_first_only import import_mscoco
 
 
-PRINT_STRING = """({0:.2f} img/sec) iteration: {1:05d}\n    before insert: {2}\n    after model insert: {3}\n    after label insert: {4}"""
+PRINT_STRING = """({0:.2f} img/sec) iteration: {1:05d}\n    caption: {2}"""
 BATCH_SIZE = 50
 
 
@@ -31,13 +32,20 @@ if __name__ == "__main__":
     vocab, pretrained_matrix = load_glove(vocab_size=100000, embedding_size=300)
     with tf.Graph().as_default():
 
-        image_id, running_ids, indicator, previous_id, next_id, pointer, image_features = (
+        _image_id, _running_ids, _indicator, _next_id, _pointer, _image_features = (
             import_mscoco(mode="train", batch_size=BATCH_SIZE, num_epochs=1, is_mini=True))
-        best_first_module = BestFirstModule(pretrained_matrix)
-        pointer_logits, word_logits = best_first_module(
-            image_features, running_ids, previous_id, indicators=indicator)
-        ids = tf.argmax(word_logits, axis=-1, output_type=tf.int32)
+        
+        image_id = tf.get_variable("image_id", dtype=_image_id.dtype, shape=_image_id.shape)
+        image_features = tf.get_variable(
+            "image_features", dtype=_image_features.dtype, shape=_image_features.shape)
+        load_batch = tf.group(tf.assign(image_id, _image_id), tf.assign(image_features, _image_features))
+        running_ids = tf.placeholder(tf.int32, name="running_ids", shape=[None, None])
+        
+        best_first_module = BestFirstModule(ShowAndTellCell(300), vocab, pretrained_matrix)
+        pointer_logits, word_logits = best_first_module(running_ids, mean_image_features=image_features)
+        word_ids = tf.argmax(word_logits, axis=-1, output_type=tf.int32)
         pointer_ids = tf.argmax(pointer_logits, axis=-1, output_type=tf.int32)
+        
         captioner_saver = tf.train.Saver(var_list=remap_decoder_name_scope(best_first_module.variables))
         captioner_ckpt, captioner_ckpt_name = get_best_first_checkpoint()
 
@@ -51,38 +59,39 @@ if __name__ == "__main__":
             for i in itertools.count():
                 time_start = time.time()
                 try:
-                    _caption, _ids, _next_id, _model_pointer, _label_pointer, _image_id = sess.run([
-                        running_ids, ids, next_id, pointer_ids, pointer, image_id])
+
+                    sess.run(load_batch)
+                    current_image_id = sess.run(image_id).tolist()
+                    closed = [False] * BATCH_SIZE
+                    current_running_ids = [[vocab.start_id, vocab.end_id]] * BATCH_SIZE
+                    i = 0
+                    while not all(closed) and i < 20:
+                        i = i + 1
+                        _word_ids, _pointer_ids = sess.run([word_ids, pointer_ids], feed_dict={
+                            "running_ids:0": current_running_ids})
+                        _word_ids, _pointer_ids = _word_ids.tolist(), _pointer_ids.tolist()
+                        for i in range(BATCH_SIZE):
+                            if closed[i] or (
+                                    _word_ids[i] == vocab.end_id or 
+                                    _pointer_ids[i] = len(current_running_ids[i] - 1)):
+                                closed[i] = True
+                                continue
+                            current_running_ids[i].insert(_pointer_ids[i] + 1, _word_ids[i])
+
                 except:
                     break
-                #current_caption = recursive_ids_to_string(_caption.tolist(), vocab)
-                #model_insert = recursive_ids_to_string(_ids.tolist(), vocab)
-                #label_insert = recursive_ids_to_string(_next_id.tolist(), vocab)
-                current_caption = _caption.tolist()
-                model_insert = _ids.tolist()
-                label_insert = _next_id.tolist()
-                model_pointer = _model_pointer.tolist()
-                label_pointer = _label_pointer.tolist()
-                the_image_ids = _image_id.tolist()
-                for cap, mins, lins, mptr, lptr, iid in zip(current_caption, model_insert, 
-                                   label_insert, model_pointer, 
-                                   label_pointer, the_image_ids):
-                    model_cap = cap.copy()
-                    model_cap.insert(mptr, mins)
-                    label_cap = cap.copy()
-                    label_cap.insert(lptr, lins)
-                    cap = recursive_ids_to_string(cap, vocab)
-                    model_cap = recursive_ids_to_string(model_cap, vocab)
-                    label_cap = recursive_ids_to_string(label_cap, vocab)
+                    
+                for i in range(BATCH_SIZE):
+                    iid = current_image_id[i]
+                    cap = recursive_ids_to_string(current_running_ids[i][1:-1], vocab)
+                    
                     if not iid in used_ids:
                         used_ids.add(iid)
-                        json_dump.append({"image_id": iid, "caption": model_cap})
+                        json_dump.append({"image_id": iid, "caption": cap})
+                        
                     print(PRINT_STRING.format(
-                        BATCH_SIZE / (time.time() - time_start), i, 
-                        cap, 
-                        model_cap, 
-                        label_cap)) 
+                        BATCH_SIZE / (time.time() - time_start), i, cap)) 
 
             print("Finishing evaluating.")
-            coco_get_metrics(json_dump, "ckpts/show_and_tell/", get_train_annotations_file())
+            coco_get_metrics(json_dump, "ckpts/best_first/", get_train_annotations_file())
             

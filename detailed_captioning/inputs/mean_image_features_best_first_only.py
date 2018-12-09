@@ -27,48 +27,47 @@ def _process_tf_record_proto(serialized_proto):
     context, sequence = tf.parse_single_sequence_example(
         serialized_proto,
         context_features = {
-            "image/image_id": tf.FixedLenFeature([], dtype=tf.int64),
-            "image/previous_id": tf.FixedLenFeature([], dtype=tf.int64),
-            "image/next_id": tf.FixedLenFeature([], dtype=tf.int64),
-            "image/pointer": tf.FixedLenFeature([], dtype=tf.int64)},
+            "image/image_id": tf.FixedLenFeature([], dtype=tf.int64)},
         sequence_features = {
             "image/running_ids": tf.FixedLenSequenceFeature([], dtype=tf.int64),
+            "image/running_ids_splits": tf.FixedLenSequenceFeature([], dtype=tf.int64),
+            "image/word_ids": tf.FixedLenSequenceFeature([], dtype=tf.int64),
+            "image/pointer_ids": tf.FixedLenSequenceFeature([], dtype=tf.int64),
             "image/image_features": tf.FixedLenSequenceFeature([], dtype=tf.float32)})
-    image_id, running_ids = (
-        context["image/image_id"], sequence["image/running_ids"])
-    previous_id, next_id, pointer = (
-        context["image/previous_id"], context["image/next_id"], context["image/pointer"])
-    image_features = sequence["image/image_features"]
-    return {"image_id": image_id, "running_ids": running_ids, 
-            "previous_id": previous_id, "next_id": next_id, "pointer": pointer,
-            "image_features": image_features}
+    image_id, image_features = context["image/image_id"], sequence["image/image_features"]
+    running_ids, running_ids_splits = sequence["image/running_ids"], sequence["image/running_ids_splits"]
+    word_ids, pointer_ids = sequence["image/word_ids"], sequence["image/pointer_ids"]
+    return {"image_id": image_id, "image_features": image_features, 
+            "running_ids": running_ids, "running_ids_splits": running_ids_splits ,
+            "word_ids": word_ids, "pointer_ids": pointer_ids}
 
 
 def _mask_and_slice(x):
-    image_id, running_ids, image_features = x["image_id"], x["running_ids"], x["image_features"]
-    previous_id, next_id, pointer = x["previous_id"], x["next_id"], x["pointer"]
-    caption_length = tf.shape(running_ids)[0]
+    image_id, image_features = x["image_id"], x["image_features"]
+    running_ids, running_ids_splits = x["running_ids"], x["running_ids_splits"]
+    word_ids, pointer_ids = x["word_ids"], x["pointer_ids"]
+    caption_length = tf.shape(word_ids)[0]
     indicator = tf.ones(tf.expand_dims(caption_length, 0), dtype=tf.int32)
-    return {"image_id": image_id, "running_ids": running_ids, "indicator": indicator, 
-            "previous_id": previous_id, "next_id": next_id, "pointer": pointer,
-            "image_features": image_features}
+    return {"image_id": image_id, "image_features": image_features, "indicator": indicator, 
+            "running_ids": running_ids, "running_ids_splits": running_ids_splits ,
+            "word_ids": word_ids, "pointer_ids": pointer_ids}
 
 
 def _prepare_final_batch(x):
-    image_id, running_ids, indicator, previous_id, next_id, pointer, image_features = (
-        x["image_id"], x["running_ids"], x["indicator"], 
-        x["previous_id"], x["next_id"], x["pointer"], x["image_features"])
+    image_id, image_features, indicator = x["image_id"], x["image_features"], x["indicator"]
+    running_ids, running_ids_splits = x["running_ids"], x["running_ids_splits"]
+    word_ids, pointer_ids = x["word_ids"], x["pointer_ids"]
     target_shape = [tf.shape(image_features)[0], 7, 7, 2048]
     image_features = tf.reduce_mean(tf.reshape(image_features, target_shape), [1, 2])
     image_id = tf.cast(image_id, tf.int32)
-    running_ids = tf.cast(running_ids, tf.int32)
-    indicator = tf.cast(indicator, tf.float32)
-    previous_id = tf.cast(previous_id, tf.int32)
-    next_id, pointer = tf.cast(next_id, tf.int32), tf.cast(pointer, tf.int32)
     image_features = tf.cast(image_features, tf.float32)
-    return {"image_id": image_id, "running_ids": running_ids, "indicator": indicator, 
-            "previous_id": previous_id, "next_id": next_id, "pointer": pointer,
-            "image_features": image_features}
+    indicator = tf.cast(indicator, tf.float32)
+    running_ids = tf.cast(running_ids, tf.int32)
+    running_ids_splits = tf.cast(running_ids_splits, tf.int32)
+    word_ids, pointer_ids = tf.cast(word_ids, tf.int32), tf.cast(pointer_ids, tf.int32)
+    return {"image_id": image_id, "image_features": image_features, "indicator": indicator, 
+            "running_ids": running_ids, "running_ids_splits": running_ids_splits ,
+            "word_ids": word_ids, "pointer_ids": pointer_ids}
     
 
 def import_mscoco(mode="train", is_mini=True, batch_size=100, num_epochs=1):
@@ -77,15 +76,15 @@ def import_mscoco(mode="train", is_mini=True, batch_size=100, num_epochs=1):
     dataset = dataset.map(_process_tf_record_proto, num_parallel_calls=4)
     dataset = dataset.map(_mask_and_slice, num_parallel_calls=4)
     dataset = dataset.apply(tf.contrib.data.shuffle_and_repeat(1000, count=num_epochs))
-    padded_shapes = {"image_id": [], "running_ids": [None], "indicator": [None], 
-                     "previous_id": [], "next_id": [], "pointer": [], 
-                     "image_features": [7 * 7 * 2048]}
+    padded_shapes = {"image_id": [], "image_features": [7 * 7 * 2048], "indicator": [None], 
+                     "running_ids": [None], "running_ids_splits": [None],
+                     "word_ids": [None], "pointer_ids": [None]}
     dataset = dataset.padded_batch(batch_size, padded_shapes=padded_shapes, drop_remainder=True)
     dataset = dataset.map(_prepare_final_batch, num_parallel_calls=4)
     dataset = dataset.apply(tf.contrib.data.prefetch_to_device("/gpu:0", buffer_size=2))
     iterator = dataset.make_one_shot_iterator()
     x = iterator.get_next()
-    image_id, running_ids, indicator, previous_id, next_id, pointer, image_features = (
-        x["image_id"], x["running_ids"], x["indicator"], 
-        x["previous_id"], x["next_id"], x["pointer"], x["image_features"])
-    return image_id, running_ids, indicator, previous_id, next_id, pointer, image_features
+    image_id, image_features, indicator = x["image_id"], x["image_features"], x["indicator"]
+    running_ids, running_ids_splits = x["running_ids"], x["running_ids_splits"]
+    word_ids, pointer_ids = x["word_ids"], x["pointer_ids"]
+    return image_id, image_features, indicator, running_ids, running_ids_splits, word_ids, pointer_ids
