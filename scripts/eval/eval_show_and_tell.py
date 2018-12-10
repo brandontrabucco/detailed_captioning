@@ -20,6 +20,7 @@ from detailed_captioning.utils import list_of_ids_to_string
 from detailed_captioning.utils import recursive_ids_to_string
 from detailed_captioning.utils import coco_get_metrics
 from detailed_captioning.utils import get_train_annotations_file
+from detailed_captioning.utils import get_val_annotations_file
 from detailed_captioning.inputs.mean_image_features_only import import_mscoco
 
 
@@ -28,6 +29,7 @@ tf.logging.set_verbosity(tf.logging.INFO)
 tf.flags.DEFINE_integer("batch_size", 1, "")
 tf.flags.DEFINE_integer("beam_size", 3, "")
 tf.flags.DEFINE_boolean("is_mini", False, "")
+tf.flags.DEFINE_string("mode", "eval", "")
 FLAGS = tf.flags.FLAGS
 
 
@@ -37,7 +39,7 @@ if __name__ == "__main__":
     with tf.Graph().as_default():
 
         image_id, mean_features, input_seq, target_seq, indicator = import_mscoco(
-            mode="train", batch_size=FLAGS.batch_size, num_epochs=1, is_mini=FLAGS.is_mini)
+            mode=FLAGS.mode, batch_size=FLAGS.batch_size, num_epochs=1, is_mini=FLAGS.is_mini)
         image_captioner = ImageCaptioner(ShowAndTellCell(300), vocab, pretrained_matrix, 
             trainable=False, beam_size=FLAGS.beam_size)
         logits, ids = image_captioner(mean_image_features=mean_features)
@@ -68,4 +70,8 @@ if __name__ == "__main__":
                     FLAGS.batch_size / (time.time() - time_start))) 
 
             print("Finishing evaluating.")
-            coco_get_metrics(json_dump, "ckpts/show_and_tell/", get_train_annotations_file())
+            coco_get_metrics(
+                json_dump, 
+                "ckpts/show_and_tell/", 
+                (get_train_annotations_file() if FLAGS.mode in ["train", "eval"] 
+                    else get_val_annotations_file()))
