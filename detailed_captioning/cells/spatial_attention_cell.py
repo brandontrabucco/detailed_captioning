@@ -46,7 +46,8 @@ class SpatialAttentionCell(ImageCaptionCell):
         return self._output_size
 
     def __call__(self, inputs, state):
-        l_outputs, l_next_state = self.language_lstm(inputs, state)
+        l_inputs = tf.concat([tf.reduce_mean(self.spatial_image_features, [1, 2]), inputs], 1)
+        l_outputs, l_next_state = self.language_lstm(l_inputs, state)
         s_inputs = tf.concat([l_outputs, inputs], 1)
         image_height = tf.shape(self.spatial_image_features)[1]
         image_width = tf.shape(self.spatial_image_features)[2]

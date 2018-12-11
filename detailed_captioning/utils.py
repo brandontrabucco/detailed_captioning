@@ -202,18 +202,18 @@ def recursive_ids_to_string(ids, vocab):
     return list_of_ids_to_string(ids, vocab)
 
 
-def coco_get_metrics(captions_dict, eval_dir, annotations_file):
+def coco_get_metrics(mode, captions_dict, eval_dir, annotations_file):
     """Get the performance metrics on the dataset.
     """
     time_now = time.time()
-    with open(os.path.join(eval_dir, "results." + str(time_now) + ".json"), "w") as f:
+    with open(os.path.join(eval_dir, mode + ".results." + str(time_now) + ".json"), "w") as f:
         json.dump(captions_dict, f)
     coco = COCO(annotations_file)
-    cocoRes = coco.loadRes(os.path.join(eval_dir, "results." + str(time_now) + ".json"))
+    cocoRes = coco.loadRes(os.path.join(eval_dir, mode + ".results." + str(time_now) + ".json"))
     cocoEval = COCOEvalCap(coco, cocoRes)
     cocoEval.params['image_id'] = cocoRes.getImgIds()
     cocoEval.evaluate()
-    with open(os.path.join(eval_dir, "metrics." + str(time_now) + ".json"), "w") as f:
+    with open(os.path.join(eval_dir, mode + ".metrics." + str(time_now) + ".json"), "w") as f:
         metrics_dump = {metric: float(np.sum(score)) for metric, score in cocoEval.eval.items()}
         json.dump(metrics_dump, f)
     return metrics_dump

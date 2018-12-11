@@ -71,6 +71,7 @@ if __name__ == "__main__":
 
             print("Finishing evaluating.")
             coco_get_metrics(
+                FLAGS.mode,
                 json_dump, 
                 "ckpts/show_and_tell/", 
                 (get_train_annotations_file() if FLAGS.mode in ["train", "eval"] 

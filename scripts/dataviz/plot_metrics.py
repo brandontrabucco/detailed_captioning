@@ -17,14 +17,15 @@ FLAGS = tf.flags.FLAGS
 
 def main(unused_argv):
     
-    raw_filenames = tf.gfile.Glob("./ckpts/*/metrics.*.json")
+    raw_filenames = tf.gfile.Glob("./ckpts/*/{0}.metrics.*.json".format(FLAGS.mode))
     model_names = list(set([os.path.basename(os.path.dirname(x)) for x in raw_filenames]))
     target_filenames = []
     for model_name in model_names:
         best_filename, best_time = None, -999999.999999
         for filename in raw_filenames:
             if model_name in filename:
-                x_time = float(os.path.basename(filename)[8:-5])
+                x_time = float(os.path.basename(
+                    filename).replace("{0}.metrics.".format(FLAGS.mode), "").replace(".json", ""))
                 if x_time > best_time:
                     best_filename = filename
                     best_time = x_time
@@ -37,7 +38,7 @@ def main(unused_argv):
                 i + np.arange(len(metric_names)) * (len(model_names) + 1),
                 values,
                 tick_label=metric_names if i == len(model_names)//2 else None)
-    plt.title("Comparison of performance on {0} dataset".format(FLAGS.mode))
+    plt.title("Comparison of {0} performance".format(FLAGS.mode))
     plt.xlabel("Evaluation metric name")
     plt.ylabel("Value achieved by model")
     plt.legend(model_names)
