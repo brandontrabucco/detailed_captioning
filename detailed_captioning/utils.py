@@ -16,8 +16,6 @@ import pickle as pkl
 import nltk
 from PIL import Image
 from nltk.corpus import brown
-from pycocoapi.coco import COCO
-from pycocoapi.eval import COCOEvalCap
 
 
 def check_runtime():
@@ -200,20 +198,3 @@ def recursive_ids_to_string(ids, vocab):
     if isinstance(ids[0], list):
         return [recursive_ids_to_string(x, vocab) for x in ids]
     return list_of_ids_to_string(ids, vocab)
-
-
-def coco_get_metrics(mode, captions_dict, eval_dir, annotations_file):
-    """Get the performance metrics on the dataset.
-    """
-    time_now = time.time()
-    with open(os.path.join(eval_dir, mode + ".results." + str(time_now) + ".json"), "w") as f:
-        json.dump(captions_dict, f)
-    coco = COCO(annotations_file)
-    cocoRes = coco.loadRes(os.path.join(eval_dir, mode + ".results." + str(time_now) + ".json"))
-    cocoEval = COCOEvalCap(coco, cocoRes)
-    cocoEval.params['image_id'] = cocoRes.getImgIds()
-    cocoEval.evaluate()
-    with open(os.path.join(eval_dir, mode + ".metrics." + str(time_now) + ".json"), "w") as f:
-        metrics_dump = {metric: float(np.sum(score)) for metric, score in cocoEval.eval.items()}
-        json.dump(metrics_dump, f)
-    return metrics_dump

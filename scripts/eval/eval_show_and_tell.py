@@ -18,7 +18,7 @@ from detailed_captioning.utils import get_show_and_tell_checkpoint
 from detailed_captioning.utils import remap_decoder_name_scope
 from detailed_captioning.utils import list_of_ids_to_string
 from detailed_captioning.utils import recursive_ids_to_string
-from detailed_captioning.utils import coco_get_metrics
+from coco_metrics import evaluate
 from detailed_captioning.utils import get_train_annotations_file
 from detailed_captioning.utils import get_val_annotations_file
 from detailed_captioning.inputs.mean_image_features_only import import_mscoco
@@ -70,7 +70,7 @@ if __name__ == "__main__":
                     FLAGS.batch_size / (time.time() - time_start))) 
 
             print("Finishing evaluating.")
-            coco_get_metrics(
+            evaluate(
                 FLAGS.mode,
                 json_dump, 
                 "ckpts/show_and_tell/", 
