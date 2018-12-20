@@ -25,7 +25,8 @@ from collections import namedtuple
 from datetime import datetime
 from detailed_captioning.utils import load_glove
 from detailed_captioning.utils import load_tagger
-from detailed_captioning.utils import get_visual_words
+from detailed_captioning.utils import get_visual_categories
+from detailed_captioning.utils import get_visual_attributes
 from detailed_captioning.layers.box_extractor import BoxExtractor
 from detailed_captioning.layers.feature_extractor import FeatureExtractor
 from detailed_captioning.utils import get_faster_rcnn_config
@@ -92,6 +93,11 @@ AttributeMetadata = namedtuple("AttributeMetadata",
                            ["image_id", "filename", "captions", "image_features", "object_features",
                             "running_ids", "running_ids_splits", "word_ids", "pointer_ids",
                             "attributes"])
+
+CategoryMetadata = namedtuple("CategoryMetadata",
+                           ["image_id", "filename", "captions", "image_features", "object_features",
+                            "running_ids", "running_ids_splits", "word_ids", "pointer_ids",
+                            "attributes", "coarse_categories", "fine_categories"])
 
 class ImageDecoder(object):
     """Helper class for decoding images in TensorFlow."""
@@ -165,14 +171,17 @@ def _to_sequence_example(image, vocab):
     feature_lists = tf.train.FeatureLists(feature_list={
         "image/caption": _bytes_feature_list([bytes(c, "utf-8") for c in caption]),
         "image/caption_ids": _int64_feature_list(caption_ids),
-        "image/running_ids": _int64_feature_list(image.running_ids),
-        "image/running_ids_splits": _int64_feature_list(image.running_ids_splits),
-        "image/word_ids": _int64_feature_list(image.word_ids),
-        "image/pointer_ids": _int64_feature_list(image.pointer_ids),
         "image/image_features": _float_feature_list(image.image_features.flatten().tolist()),
         "image/image_features_shape": _int64_feature_list(image.image_features.shape),
         "image/object_features": _float_feature_list(image.object_features.flatten().tolist()),
         "image/object_features_shape": _int64_feature_list(image.object_features.shape),
+        "image/running_ids": _int64_feature_list(image.running_ids),
+        "image/running_ids_splits": _int64_feature_list(image.running_ids_splits),
+        "image/word_ids": _int64_feature_list(image.word_ids),
+        "image/pointer_ids": _int64_feature_list(image.pointer_ids),
+        "image/attributes": _int64_feature_list(image.attributes),
+        "image/coarse_categories": _int64_feature_list(image.coarse_categories),
+        "image/fine_categories": _int64_feature_list(image.fine_categories),
     })
     sequence_example = tf.train.SequenceExample(
         context=context, feature_lists=feature_lists)
@@ -185,6 +194,7 @@ def _process_best_first(images, vocab, tagger):
     Args:
         images: a list containing PreextractedMetadata objects.
         vocab: a Vocabulary object.
+        tagger: a Tagger object from nltk.
     Returns:
         a list of BestFirstMetadata objects.
     """
@@ -216,8 +226,69 @@ def _process_best_first(images, vocab, tagger):
             pointer_ids=pointer_ids))
             
     return best_first_images
-        
 
+
+def _process_attributes(images, vocab, tagger):
+    """Processes a list of images into best first training examples.
+    Args:
+        images: a list containing BestFirstMetadata objects.
+        vocab: a Vocabulary object.
+        tagger: a Tagger object from nltk.
+    Returns:
+        a list of AttributeMetadata objects.
+    """
+    attribute_map = get_visual_attributes()
+    attribute_images = []
+    for image in images:
+        
+        caption = image.captions[0]
+        attributes = attribute_map.sentence_to_attributes(caption)
+        attribute_images.append(AttributeMetadata(
+            image_id=image.image_id, 
+            filename=image.filename, 
+            captions=image.captions, 
+            image_features=image.image_features, 
+            object_features=image.object_features,
+            running_ids=image.running_ids, 
+            running_ids_splits=image.running_ids_splits,
+            word_ids=image.word_ids, 
+            pointer_ids=image.pointer_ids,
+            attributes=attributes))
+            
+    return attribute_images
+
+
+def _process_categories(images, vocab, tagger):
+    """Processes a list of images into best first training examples.
+    Args:
+        images: a list containing AttributeMetadata objects.
+        vocab: a Vocabulary object.
+        tagger: a Tagger object from nltk.
+    Returns:
+        a list of CategoryMetadata objects.
+    """
+    category_map = get_visual_categories()
+    category_images = []
+    for image in images:
+        
+        caption = image.captions[0]
+        coarse_categories, fine_categories = category_map.sentence_to_categories(caption)
+        category_images.append(CategoryMetadata(
+            image_id=image.image_id, 
+            filename=image.filename, 
+            captions=image.captions, 
+            image_features=image.image_features, 
+            object_features=image.object_features,
+            running_ids=image.running_ids, 
+            running_ids_splits=image.running_ids_splits,
+            word_ids=image.word_ids, 
+            pointer_ids=image.pointer_ids,
+            attributes=image.attributes,
+            coarse_categories=coarse_categories,
+            fine_categories=fine_categories))
+            
+    return category_images
+        
 
 def _process_image_files(thread_index, ranges, name, images, vocab, tagger, num_shards, 
                          run_model_fn):
@@ -258,6 +329,8 @@ def _process_image_files(thread_index, ranges, name, images, vocab, tagger, num_
         these_images = images[shard_ranges[s]:shard_ranges[s + 1]]
         these_images = _preextract_dataset(these_images, run_model_fn)
         these_images = _process_best_first(these_images, vocab, tagger)
+        these_images = _process_attributes(these_images, vocab, tagger)
+        these_images = _process_categories(these_images, vocab, tagger)
         
         for image in these_images:
             sequence_example = _to_sequence_example(image, vocab)
@@ -448,8 +521,6 @@ def main(unused_argv):
     # Create vocabulary from the glove embeddings.
     vocab, _ = load_glove(vocab_size=FLAGS.vocab_size, embedding_size=FLAGS.embedding_size)
     tagger = load_tagger()
-    frequent_words = get_top_k_words(vocab.reverse_vocab, vocab, tagger, k=FLAGS.top_k_attributes)
-    categorical_map = get_visual_words()
 
     if not tf.gfile.IsDirectory(FLAGS.output_dir):
         tf.gfile.MakeDirs(FLAGS.output_dir)

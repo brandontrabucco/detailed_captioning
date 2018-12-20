@@ -18,29 +18,6 @@ from PIL import Image
 from nltk.corpus import brown
 
 
-class CategoricalMap(object):
-
-    def __init__(self, category_names, category_aliases):
-
-        if isinstance(category_aliases[0], list):
-            self.vocab = {}
-            for i, words in enumerate(category_aliases):
-                for word in words:
-                    self.vocab = { word : i }
-        if isinstance(category_aliases[0], str):
-            self.vocab = { word : i for i, word in enumerate(category_aliases)}
-        self.reverse_vocab = category_names
-
-    def sentence_to_categories(self, list_of_words):
-        
-        if len(list_of_words) > 0:
-            if isinstance(list_of_words[0], list):
-                return [self.sentence_to_categories(x) for x in list_of_words]
-            if not isinstance(list_of_words[0], str):
-                return None
-            return [1.0 if x in list_of_words else 0.0 for x in self.reverse_vocab]
-
-
 def check_runtime():
     
     is_okay = False
@@ -103,8 +80,23 @@ def load_tagger():
     return glove.tagger.load(config)
 
 
-def get_visual_words():
+def cached_load(load_fn):
+    """Higher order function for caching.
+    """
     
+    results = None
+    def cached_fn(*args, **kwargs):
+        nonlocal results
+        if results is None:
+            results = load_fn(*args, **kwargs)
+        return results
+    return cached_fn
+
+
+@cached_load
+def get_visual_categories():
+    
+    check_runtime()
     filename = "data/visual_words.txt"
     word_names = []
     fine_grain_words = []
@@ -117,8 +109,129 @@ def get_visual_words():
             first, *remaining = line.split(", ")
             word_names.append(first)
             fine_grain_words.append(remaining)
+
+    class CategoryMap(object):
+
+        def __init__(self, category_names, category_aliases):
+
+            self.vocab = {}
+            for i, words in enumerate(category_aliases):
+                for word in words:
+                    self.vocab[word] = i
+            self.reverse_vocab = category_names
+            self.aliases = {}
+            for words in category_aliases:
+                for i, word in enumerate(words):
+                    self.aliases[word] = i
+            self.reverse_aliases = category_aliases
+
+        def coarse_word_to_id(self, word):
+
+            if isinstance(word, list):
+                return [self.coarse_word_to_id(w) for w in word]
+            if word not in self.vocab:
+                return None
+            return self.vocab[word]
+
+        def fine_word_to_id(self, word):
+
+            if isinstance(word, list):
+                return [self.fine_word_to_id(w) for w in word]
+            if word not in self.aliases:
+                return None
+            return self.aliases[word]
+
+        def coarse_id_to_word(self, index):
+
+            if isinstance(index, list):
+                return [self.coarse_id_to_word(i) for i in index]
+            if index < 0 or index >= len(self.reverse_vocab):
+                return None
+            return self.reverse_vocab[index]
+
+        def fine_id_to_word(self, course_index, fine_index):
+
+            if isinstance(index, list):
+                return [self.fine_id_to_word(i) for i in index]
+            if course_index < 0 or course_index >= len(self.reverse_vocab):
+                return None
+            if fine_index < 0 or fine_index >= len(self.reverse_aliases[course_index]):
+                return None
+            return self.reverse_aliases[course_index][fine_index]
+
+        def sentence_to_categories(self, sentence):
+
+            if not isinstance(sentence, list):
+                return None
+            if isinstance(sentence[0], list):
+                return [self.sentence_to_categories(x) for x in sentence]
+            coarse_categories = []
+            fine_categories = []
+            for i, names in enumerate(self.reverse_aliases):
+                for j, word in enumerate(names):
+                    if word in sentence:
+                        coarse_categories.append(i)
+                        fine_categories.append(j)
+            return coarse_categories, fine_categories
             
-    return CategoricalMap(word_names, fine_grain_words)
+    return CategoryMap(word_names, fine_grain_words)
+
+
+@cached_load
+def get_visual_attributes():
+    
+    check_runtime()
+    filename = "data/visual_words.txt"
+    attribute_names = []
+    with open(filename, "r") as f:
+        content = f.readlines()
+    for line in content:
+        if line is not None:
+            line = line.lower().strip()
+        if line is not None:
+            first, *remaining = line.split(", ")
+            if first not in attribute_names:
+                attribute_names.append(first)
+            for rest in remaining:
+                if rest not in attribute_names:
+                    attribute_names.append(rest)
+                    
+    class AttributeMap(object):
+
+        def __init__(self, attribute_names):
+            
+            self.vocab = { word : i for i, word in enumerate(attribute_names)}
+            self.reverse_vocab = attribute_names
+
+        def word_to_id(self, word):
+
+            if isinstance(word, list):
+                return [self.word_to_id(w) for w in word]
+            if word not in self.vocab:
+                return None
+            return self.vocab[word]
+
+        def id_to_word(self, index):
+
+            if isinstance(index, list):
+                return [self.id_to_word(i) for i in index]
+            if index < 0 or index >= len(self.reverse_vocab):
+                return None
+            return self.reverse_vocab[index]
+
+        def sentence_to_attributes(self, sentence):
+
+            if not isinstance(sentence, list):
+                return None
+            if isinstance(sentence[0], list):
+                return [self.sentence_to_categories(x) for x in sentence]
+            present_attributes = []
+            for i, word in enumerate(self.reverse_vocab):
+                if word in sentence:
+                    present_attributes.append(i)
+            return present_attributes
+            
+    return AttributeMap(attribute_names)
 
 
 def get_faster_rcnn_config():
