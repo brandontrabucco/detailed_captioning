@@ -19,7 +19,7 @@ from detailed_captioning.utils import get_show_and_tell_checkpoint
 from detailed_captioning.utils import remap_decoder_name_scope
 from detailed_captioning.utils import list_of_ids_to_string
 from detailed_captioning.utils import recursive_ids_to_string
-from detailed_captioning.utils import coco_get_metrics
+from coco_metrics import evaluate
 from detailed_captioning.utils import get_train_annotations_file
 from detailed_captioning.inputs.mean_image_features_only import import_mscoco
 from glove.heuristic import get_descriptive_scores
