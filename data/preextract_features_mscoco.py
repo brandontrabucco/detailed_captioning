@@ -582,8 +582,12 @@ def main(unused_argv):
         rcnn_saver.restore(sess, get_faster_rcnn_checkpoint())
         resnet_saver.restore(sess, get_resnet_v2_101_checkpoint())
         
+        lock = threading.Lock()
         def run_model_fn(images):
-            return sess.run([image_features, object_features], feed_dict={image_tensor: images})
+            lock.acquire()
+            r = sess.run([image_features, object_features], feed_dict={image_tensor: images})
+            lock.release()
+            return r
 
         _process_dataset("train", train_dataset, vocab, tagger, FLAGS.train_shards, run_model_fn)
         _process_dataset("val", val_dataset, vocab, tagger, FLAGS.val_shards, run_model_fn)
