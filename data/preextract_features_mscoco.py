@@ -12,6 +12,8 @@ import os.path
 import random
 import sys
 import threading
+from glove.heuristic import make_insertion_sequence
+from glove.heuristic import get_top_k_words
 
 
 import nltk.tokenize
@@ -22,6 +24,8 @@ from collections import Counter
 from collections import namedtuple
 from datetime import datetime
 from detailed_captioning.utils import load_glove
+from detailed_captioning.utils import load_tagger
+from detailed_captioning.utils import get_visual_words
 from detailed_captioning.layers.box_extractor import BoxExtractor
 from detailed_captioning.layers.feature_extractor import FeatureExtractor
 from detailed_captioning.utils import get_faster_rcnn_config
@@ -61,15 +65,16 @@ tf.flags.DEFINE_string("end_word", "</S>",
 tf.flags.DEFINE_string("unknown_word", "<UNK>",
                        "Special word meaning 'unknown'.")
 
-tf.flags.DEFINE_integer("vocab_size", 100000,"")
-tf.flags.DEFINE_integer("embedding_size", 300,"")
-tf.flags.DEFINE_integer("top_k_boxes", 8,"")
-tf.flags.DEFINE_integer("image_height", 224,"")
-tf.flags.DEFINE_integer("image_width", 224,"")
-tf.flags.DEFINE_integer("batch_size", 16,"")
-tf.flags.DEFINE_integer("train_dataset_size", 1000000,"")
-tf.flags.DEFINE_integer("val_dataset_size", 100000,"")
-tf.flags.DEFINE_integer("test_dataset_size", 100000,"")
+tf.flags.DEFINE_integer("vocab_size", 100000, "")
+tf.flags.DEFINE_integer("embedding_size", 300, "")
+tf.flags.DEFINE_integer("top_k_attributes", 1000, "")
+tf.flags.DEFINE_integer("top_k_boxes", 8, "")
+tf.flags.DEFINE_integer("image_height", 224, "")
+tf.flags.DEFINE_integer("image_width", 224, "")
+tf.flags.DEFINE_integer("batch_size", 16, "")
+tf.flags.DEFINE_integer("train_dataset_size", 1000000, "")
+tf.flags.DEFINE_integer("val_dataset_size", 100000, "")
+tf.flags.DEFINE_integer("test_dataset_size", 100000, "")
 
 FLAGS = tf.flags.FLAGS
 
@@ -78,6 +83,15 @@ ImageMetadata = namedtuple("ImageMetadata",
 
 PreextractedMetadata = namedtuple("PreextractedMetadata",
                            ["image_id", "filename", "captions", "image_features", "object_features"])
+
+BestFirstMetadata = namedtuple("BestFirstMetadata",
+                           ["image_id", "filename", "captions", "image_features", "object_features",
+                            "running_ids", "running_ids_splits", "word_ids", "pointer_ids"])
+
+AttributeMetadata = namedtuple("AttributeMetadata",
+                           ["image_id", "filename", "captions", "image_features", "object_features",
+                            "running_ids", "running_ids_splits", "word_ids", "pointer_ids",
+                            "attributes"])
 
 class ImageDecoder(object):
     """Helper class for decoding images in TensorFlow."""
@@ -151,17 +165,61 @@ def _to_sequence_example(image, vocab):
     feature_lists = tf.train.FeatureLists(feature_list={
         "image/caption": _bytes_feature_list([bytes(c, "utf-8") for c in caption]),
         "image/caption_ids": _int64_feature_list(caption_ids),
+        "image/running_ids": _int64_feature_list(image.running_ids),
+        "image/running_ids_splits": _int64_feature_list(image.running_ids_splits),
+        "image/word_ids": _int64_feature_list(image.word_ids),
+        "image/pointer_ids": _int64_feature_list(image.pointer_ids),
         "image/image_features": _float_feature_list(image.image_features.flatten().tolist()),
         "image/image_features_shape": _int64_feature_list(image.image_features.shape),
         "image/object_features": _float_feature_list(image.object_features.flatten().tolist()),
         "image/object_features_shape": _int64_feature_list(image.object_features.shape),
     })
-    sequence_example = tf.train.SequenceExample(context=context, feature_lists=feature_lists)
+    sequence_example = tf.train.SequenceExample(
+        context=context, feature_lists=feature_lists)
 
     return sequence_example
 
 
-def _process_image_files(thread_index, ranges, name, images, vocab, num_shards, 
+def _process_best_first(images, vocab, tagger):
+    """Processes a list of images into best first training examples.
+    Args:
+        images: a list containing PreextractedMetadata objects.
+        vocab: a Vocabulary object.
+    Returns:
+        a list of BestFirstMetadata objects.
+    """
+    best_first_images = []
+    for image in images:
+        
+        caption = image.captions[0]
+        word_ids, pointer_ids = make_insertion_sequence(caption, vocab, tagger)
+        word_ids = vocab.word_to_id(word_ids) + [vocab.end_id]
+        pointer_ids = pointer_ids + [len(pointer_ids)]
+        partial_caption = [vocab.start_id, vocab.end_id]
+        running_ids = partial_caption.copy()
+        running_ids_splits = [2]
+        
+        for next_id, pointer in zip(word_ids, pointer_ids):
+            partial_caption.insert(pointer + 1, next_id)
+            running_ids.extend(partial_caption.copy())
+            running_ids_splits.append(len(partial_caption))
+            
+        best_first_images.append(BestFirstMetadata(
+            image_id=image.image_id, 
+            filename=image.filename, 
+            captions=image.captions, 
+            image_features=image.image_features, 
+            object_features=image.object_features,
+            running_ids=running_ids, 
+            running_ids_splits=running_ids_splits,
+            word_ids=word_ids, 
+            pointer_ids=pointer_ids))
+            
+    return best_first_images
+        
+
+
+def _process_image_files(thread_index, ranges, name, images, vocab, tagger, num_shards, 
                          run_model_fn):
     """Processes and saves a subset of images as TFRecord files in one thread.
     Args:
@@ -171,6 +229,7 @@ def _process_image_files(thread_index, ranges, name, images, vocab, num_shards,
       name: Unique identifier specifying the dataset.
       images: List of ImageMetadata.
       vocab: A Vocabulary object.
+      tagger: an NLTK Tagger object.
       num_shards: Integer number of shards for the output files.
       run_model_fn: a handle to the model run function.
     """
@@ -198,6 +257,7 @@ def _process_image_files(thread_index, ranges, name, images, vocab, num_shards,
         
         these_images = images[shard_ranges[s]:shard_ranges[s + 1]]
         these_images = _preextract_dataset(these_images, run_model_fn)
+        these_images = _process_best_first(these_images, vocab, tagger)
         
         for image in these_images:
             sequence_example = _to_sequence_example(image, vocab)
@@ -221,12 +281,13 @@ def _process_image_files(thread_index, ranges, name, images, vocab, num_shards,
     sys.stdout.flush()
 
 
-def _process_dataset(name, images, vocab, num_shards, run_model_fn):
+def _process_dataset(name, images, vocab, tagger, num_shards, run_model_fn):
     """Processes a complete data set and saves it as a TFRecord.
     Args:
         name: Unique identifier specifying the dataset.
         images: List of ImageMetadata.
         vocab: A Vocabulary object.
+        tagger: an NLTK Tagger object
         num_shards: Integer number of shards for the output files.
     """
     
@@ -249,7 +310,7 @@ def _process_dataset(name, images, vocab, num_shards, run_model_fn):
     # Launch a thread for each batch.
     print("Launching %d threads for spacings: %s" % (num_threads, ranges))
     for thread_index in xrange(len(ranges)):
-        args = (thread_index, ranges, name, images, vocab, num_shards, run_model_fn)
+        args = (thread_index, ranges, name, images, vocab, tagger, num_shards, run_model_fn)
         t = threading.Thread(target=_process_image_files, args=args)
         t.start()
         threads.append(t)
@@ -267,9 +328,8 @@ def _process_caption(caption):
     Returns:
         A list of strings; the tokenized caption.
     """
-    tokenized_caption = [FLAGS.start_word]
+    tokenized_caption = []
     tokenized_caption.extend(nltk.tokenize.word_tokenize(caption.lower()))
-    tokenized_caption.append(FLAGS.end_word)
     return tokenized_caption
 
 
@@ -384,6 +444,12 @@ def main(unused_argv):
         "Please make the FLAGS.num_threads commensurate with FLAGS.val_shards")
     assert _is_valid_num_shards(FLAGS.test_shards), (
         "Please make the FLAGS.num_threads commensurate with FLAGS.test_shards")
+        
+    # Create vocabulary from the glove embeddings.
+    vocab, _ = load_glove(vocab_size=FLAGS.vocab_size, embedding_size=FLAGS.embedding_size)
+    tagger = load_tagger()
+    frequent_words = get_top_k_words(vocab.reverse_vocab, vocab, tagger, k=FLAGS.top_k_attributes)
+    categorical_map = get_visual_words()
 
     if not tf.gfile.IsDirectory(FLAGS.output_dir):
         tf.gfile.MakeDirs(FLAGS.output_dir)
@@ -423,21 +489,18 @@ def main(unused_argv):
         random.shuffle(test_dataset)
         test_dataset = test_dataset[:FLAGS.test_dataset_size]
 
-    # Create vocabulary from the glove embeddings.
-    vocab, _ = load_glove(vocab_size=FLAGS.vocab_size, embedding_size=FLAGS.embedding_size)
-
     # Create the model to extract image boxes
-    box_extractor = BoxExtractor(get_faster_rcnn_config(), 
-                                 top_k_boxes=FLAGS.top_k_boxes, trainable=False)
-    image_tensor = tf.placeholder(tf.float32, name='image_tensor', 
-                                  shape=[None, FLAGS.image_height, FLAGS.image_width, 3])
+    box_extractor = BoxExtractor(get_faster_rcnn_config(), top_k_boxes=FLAGS.top_k_boxes, 
+        trainable=False)
+    image_tensor = tf.placeholder(tf.float32, name='image_tensor', shape=[None, 
+        FLAGS.image_height, FLAGS.image_width, 3])
     boxes, scores, cropped_images = box_extractor(image_tensor)
     # Create the model to extract the image features
     feature_extractor = FeatureExtractor(is_training=False, global_pool=False)
     # Compute the ResNet-101 features
-    image_features = feature_extractor(image_tensor)
+    image_features = tf.reduce_mean(feature_extractor(image_tensor), [1, 2])
     feature_batch = tf.shape(image_features)[0]
-    feature_depth = tf.shape(image_features)[3]
+    feature_depth = tf.shape(image_features)[1]
     object_features = tf.reduce_mean(feature_extractor(cropped_images), [1, 2])
     object_features = tf.reshape(object_features, [feature_batch, FLAGS.top_k_boxes, feature_depth])
 
@@ -451,9 +514,9 @@ def main(unused_argv):
         def run_model_fn(images):
             return sess.run([image_features, object_features], feed_dict={image_tensor: images})
 
-        _process_dataset("train", train_dataset, vocab, FLAGS.train_shards, run_model_fn)
-        _process_dataset("val", val_dataset, vocab, FLAGS.val_shards, run_model_fn)
-        _process_dataset("test", test_dataset, vocab, FLAGS.test_shards, run_model_fn)
+        _process_dataset("train", train_dataset, vocab, tagger, FLAGS.train_shards, run_model_fn)
+        _process_dataset("val", val_dataset, vocab, tagger, FLAGS.val_shards, run_model_fn)
+        _process_dataset("test", test_dataset, vocab, tagger, FLAGS.test_shards, run_model_fn)
 
 
 if __name__ == "__main__":

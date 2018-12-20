@@ -20,6 +20,29 @@ from pycocoapi.coco import COCO
 from pycocoapi.eval import COCOEvalCap
 
 
+class CategoricalMap(object):
+
+    def __init__(self, category_names, category_aliases):
+
+        if isinstance(category_aliases[0], list):
+            self.vocab = { word : i for word in words for i, words in enumerate(category_aliases)}
+        if isinstance(category_aliases[0], str):
+            self.vocab = { word : i for i, word in enumerate(category_aliases)}
+        self.reverse_vocab = category_names
+
+    def sentence_to_categories(self, list_of_words):
+        
+        if len(list_of_words) > 0:
+            
+            if isinstance(list_of_words[0], list):
+                return [self.sentence_to_categories(x) for x in list_of_words]
+            
+            if not isinstance(list_of_words[0], str):
+                return None
+            
+            return [1.0 if x in list_of_words else 0.0 for x in self.reverse_vocab]
+
+
 def check_runtime():
     
     is_okay = False
@@ -80,6 +103,24 @@ def load_tagger():
     config = glove.configuration.TaggerConfiguration(
         tagger_dir="/home/ubuntu/research/data/glove/tagger/")
     return glove.tagger.load(config)
+
+
+def get_visual_words():
+    
+    filename = "data/visual_words.txt"
+    word_names = []
+    fine_grain_words = []
+    with open(filename, "r") as f:
+        content = f.readlines()
+    for line in content:
+        if line is not None:
+            line = line.lower().strip()
+        if line is not None:
+            first, *remaining = line.split(", ")
+            word_names.append(first)
+            fine_grain_words.append(remaining)
+            
+    return CategoricalMap(word_names, fine_grain_words)
 
 
 def get_faster_rcnn_config():

@@ -1,2 +1,0 @@
-#!/bin/bash
-python ./data/preextract_features_mscoco_best_first.py --train_image_dir './data/coco/train2017' --val_image_dir './data/coco/val2017' --train_captions_file './data/coco/annotations/captions_train2017.json' --val_captions_file './data/coco/annotations/captions_val2017.json' --output_dir './data/coco_best_first_mini/' --vocab_size 100000 --embedding_size 300 --train_dataset_size 5000 --val_dataset_size 1000 --test_dataset_size 1000
