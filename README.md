@@ -37,6 +37,7 @@ For evaluation purposes on the COCO dataset, we usea version of Tsung-Yi Lin's r
 git clone https://github.com/brandontrabucco/coco_metrics.git
 cd coco_metrics
 pip install -e .
+./get_stanford_models.sh
 python tests.py
 ```
 
