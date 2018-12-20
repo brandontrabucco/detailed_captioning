@@ -18,7 +18,7 @@ from detailed_captioning.utils import get_best_first_checkpoint
 from detailed_captioning.utils import remap_decoder_name_scope
 from detailed_captioning.utils import list_of_ids_to_string
 from detailed_captioning.utils import recursive_ids_to_string
-from detailed_captioning.utils import coco_get_metrics
+from coco_metrics import evaluate
 from detailed_captioning.utils import get_train_annotations_file
 from detailed_captioning.inputs.mean_image_features_best_first_only import import_mscoco
 
@@ -93,5 +93,5 @@ if __name__ == "__main__":
                         BATCH_SIZE / (time.time() - time_start), i, cap)) 
 
             print("Finishing evaluating.")
-            coco_get_metrics(json_dump, "ckpts/best_first/", get_train_annotations_file())
+            evaluate(json_dump, "ckpts/best_first/", get_train_annotations_file())
             

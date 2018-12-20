@@ -23,15 +23,23 @@ pip install numpy
 pip install tensorflow
 ```
 
-Additionally, this repository relies on a few external code bases from github. In particular, download the TensorFlow [object detection](https://github.com/tensorflow/models/tree/03612984e9f7565fed185977d251bbc23665396e/research/object_detection) API and run the setup script.
+Additionally, this repository relies on a few external code bases from github. In particular, download the TensorFlow [object detection](https://github.com/tensorflow/models/tree/03612984e9f7565fed185977d251bbc23665396e/research/object_detection) API and run the setup script. next,  follow the installation instructions found [here](https://github.com/tensorflow/models/blob/master/research/object_detection/g3doc/installation.md).
 
 ```
 git clone https://github.com/tensorflow/models.git 
-cd models/research/object_detection/
+cd models/research/
 pip install -e .
 ```
 
-For evaluation purposes on the COCO dataset, we use Tsung-Yi Lin's repository. Download and install the [coco-caption](https://github.com/tylin/coco-caption/tree/3a9afb2682141a03e1cdc02b0df6770d2c884f6f) repository and edit to suite your needs.
+For evaluation purposes on the COCO dataset, we usea version of Tsung-Yi Lin's repository, that has been migrated to python 3, and is installable as a pip package. Download and install the [coco_metrics](https://github.com/brandontrabucco/coco_metrics/tree/7b3c76042b2713b86c1f4e0f7cda7150a812db45) repository and install as an editable pip package.
+
+```
+git clone https://github.com/brandontrabucco/coco_metrics.git
+cd coco_metrics
+pip install -e .
+./get_stanford_models.sh
+python tests.py
+```
 
 Finally, all of the models we implement use the [GloVe](https://nlp.stanford.edu/projects/glove/) word vectors to initialize the word embeddings matrix. We provide a clean implementation of a cached data loader for glove, with a conveniet vocabulary format, and various useful utility functions. Download and install our [data loader](https://github.com/brandontrabucco/glove/tree/3d9cb98573119b0a3d1f3e6405881b9156ad9421) from github.
 
