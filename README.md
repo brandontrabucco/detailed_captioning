@@ -18,7 +18,7 @@ The number of recent papers (since 2015) that claim to achieve state-of-the-art 
 This repository depends on the TensorFlow automatic differentiation library, and a few other computation libraries. Install the following python packages using pip.
 
 ```
-pip install Pillow
+pip install pillow
 pip install numpy
 pip install tensorflow
 ```
@@ -31,7 +31,7 @@ cd models/research/
 pip install -e .
 ```
 
-For evaluation purposes on the COCO dataset, we usea version of Tsung-Yi Lin's repository, that has been migrated to python 3, and is installable as a pip package. Download and install the [coco_metrics](https://github.com/brandontrabucco/coco_metrics/tree/7b3c76042b2713b86c1f4e0f7cda7150a812db45) repository and install as an editable pip package.
+For evaluation purposes on the COCO dataset, we use a version of [Tsung-Yi Lin](https://github.com/tylin/coco-caption/tree/3a9afb2682141a03e1cdc02b0df6770d2c884f6f)'s repository that has been migrated to python 3.6, and is installable as a pip package. Download the [coco_metrics](https://github.com/brandontrabucco/coco_metrics/tree/7b3c76042b2713b86c1f4e0f7cda7150a812db45) repository and install as an editable pip package.
 
 ```
 git clone https://github.com/brandontrabucco/coco_metrics.git
