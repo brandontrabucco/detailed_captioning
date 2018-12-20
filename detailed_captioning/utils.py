@@ -23,7 +23,10 @@ class CategoricalMap(object):
     def __init__(self, category_names, category_aliases):
 
         if isinstance(category_aliases[0], list):
-            self.vocab = { word : i for word in words for i, words in enumerate(category_aliases)}
+            self.vocab = {}
+            for i, words in enumerate(category_aliases):
+                for word in words:
+                    self.vocab = { word : i }
         if isinstance(category_aliases[0], str):
             self.vocab = { word : i for i, word in enumerate(category_aliases)}
         self.reverse_vocab = category_names
@@ -31,13 +34,10 @@ class CategoricalMap(object):
     def sentence_to_categories(self, list_of_words):
         
         if len(list_of_words) > 0:
-            
             if isinstance(list_of_words[0], list):
                 return [self.sentence_to_categories(x) for x in list_of_words]
-            
             if not isinstance(list_of_words[0], str):
                 return None
-            
             return [1.0 if x in list_of_words else 0.0 for x in self.reverse_vocab]
 
 
