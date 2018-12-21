@@ -13,7 +13,7 @@ from detailed_captioning.utils import get_visual_attributes
 from detailed_captioning.inputs.mean_image_features_and_attributes_only import import_mscoco
 
 
-PRINT_STRING = """({3:.2f} img/sec) iteration: {0:05d} loss: {1:.5f}\n    attributes: {2}"""
+PRINT_STRING = """({4:.2f} img/sec) iteration: {0:05d} loss: {1:.5f}\n    predicted: {2}\n    actual: {3}"""
 tf.logging.set_verbosity(tf.logging.INFO)
 tf.flags.DEFINE_integer("num_epochs", 100, "")
 tf.flags.DEFINE_integer("batch_size", 32, "")
@@ -62,7 +62,8 @@ def main(unused_argv):
                 
                 time_start = time.time()
                 try:
-                    _detections, _loss, _learning_step = sess.run([detections, loss, learning_step])
+                    _attributes, _detections, _loss, _learning_step = sess.run([
+                        attributes, detections, loss, learning_step])
                 except:
                     break
                     
@@ -71,6 +72,8 @@ def main(unused_argv):
                 print(PRINT_STRING.format(
                     iteration, _loss, str(attribute_map.id_to_word(np.where(
                         _detections[0, :] > 0.5)[0].tolist())), 
+                    str(attribute_map.id_to_word(np.where(
+                        _attributes[0, :] > 0.5)[0].tolist())),
                     FLAGS.batch_size / (time.time() - time_start)))
                 
                 new_save = time.time()

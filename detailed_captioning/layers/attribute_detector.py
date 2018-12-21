@@ -8,7 +8,7 @@ import tensorflow.contrib.seq2seq as seq2seq
 
 class AttributeDetector(tf.keras.layers.Layer):
 
-    def __init__(self, num_attributes, threshold=0.9, name=None, trainable=True, **kwargs ):
+    def __init__(self, num_attributes, threshold=0.08, name=None, trainable=True, **kwargs ):
         self.num_attributes = num_attributes
         self.threshold = threshold
         super(AttributeDetector, self).__init__(name=name, trainable=trainable, **kwargs)

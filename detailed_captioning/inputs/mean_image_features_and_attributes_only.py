@@ -41,6 +41,7 @@ def _process_tf_record_proto(serialized_proto):
     spt = tf.SparseTensor(tf.expand_dims(attributes, 1),
                          tf.ones(tf.shape(attributes)[0]),
                          [1000])
+    attributes = tf.sparse_tensor_to_dense(spt)
     return {"image_id": image_id, "caption": caption, 
             "image_features": image_features, "attributes": attributes}
 
