@@ -21,7 +21,7 @@ tf.flags.DEFINE_integer("num_examples", 5000, "")
 tf.flags.DEFINE_integer("epochs_per_decay", 8, "")
 tf.flags.DEFINE_float("learning_rate", 1.0, "")
 tf.flags.DEFINE_float("decay_rate", 1.0, "")
-tf.flags.DEFINE_boolean("is_mini", True, "")
+tf.flags.DEFINE_boolean("is_mini", False, "")
 FLAGS = tf.flags.FLAGS
 
 

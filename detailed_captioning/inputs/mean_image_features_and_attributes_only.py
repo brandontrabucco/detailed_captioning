@@ -18,10 +18,7 @@ def _load_dataset_from_tf_records(mode, is_mini):
         input_file_pattern = "data/coco{0}/val-?????-of-?????".format("_mini" if is_mini else "")
     if mode == "test":
         input_file_pattern = "data/coco{0}/test-?????-of-?????".format("_mini" if is_mini else "")
-        
-    input_file_pattern.replace("_mini", "_micro")
     data_files = tf.data.Dataset.list_files(input_file_pattern)
-    print("Loading files from {0}.".format(input_file_pattern))
     return data_files.apply(tf.contrib.data.parallel_interleave(
         tf.data.TFRecordDataset, cycle_length=4, sloppy=True))
 
