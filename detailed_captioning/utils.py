@@ -16,6 +16,7 @@ import pickle as pkl
 import nltk
 from PIL import Image
 from nltk.corpus import brown
+import pattern.en
 
 
 def check_runtime():
@@ -108,56 +109,58 @@ def get_visual_categories():
         if line is not None:
             first, *remaining = line.split(", ")
             word_names.append(first)
+            x = remaining
+            x.extend([pluralize(word) for word in remaining])
             fine_grain_words.append(remaining)
 
     class CategoryMap(object):
 
         def __init__(self, category_names, category_aliases):
 
-            self.vocab = {}
+            self.coarse_vocab = {}
             for i, words in enumerate(category_aliases):
                 for word in words:
-                    self.vocab[word] = i
-            self.reverse_vocab = category_names
-            self.aliases = {}
+                    self.coarse_vocab[word] = i
+                    self.coarse_vocab[pluralize(word)] = i
+            self.reverse_coarse_vocab = category_names
+            self.fine_vocab = {}
             for words in category_aliases:
                 for i, word in enumerate(words):
-                    self.aliases[word] = i
+                    self.fine_vocab[word] = i
+                    self.fine_vocab[pluralize(word)] = i
             self.reverse_aliases = category_aliases
+            self.plurality_vocab = {}
+            for words in category_aliases:
+                for word in words:
+                    self.plurality_vocab[word] = 0
+                    self.plurality_vocab[pluralize(word)] = 1
+            self.reverse_plurality_vocab = [[[y, pluralize(y)] for y in x] for x in category_aliases]
+            
 
-        def coarse_word_to_id(self, word):
+        def word_to_id(self, word):
 
             if isinstance(word, list):
-                return [self.coarse_word_to_id(w) for w in word]
-            if word not in self.vocab:
+                return [self.word_to_id(w) for w in word]
+            if (word not in self.coarse_vocab 
+                    or word not in self.fine_vocab
+                    or word not in self.plurality_vocab):
                 return None
-            return self.vocab[word]
+            return self.coarse_vocab[word], self.fine_vocab[word], self.plurality_vocab[word]
 
-        def fine_word_to_id(self, word):
+        def id_to_word(self, course_id, fine_id, plurality):
 
-            if isinstance(word, list):
-                return [self.fine_word_to_id(w) for w in word]
-            if word not in self.aliases:
-                return None
-            return self.aliases[word]
-
-        def coarse_id_to_word(self, index):
-
-            if isinstance(index, list):
-                return [self.coarse_id_to_word(i) for i in index]
-            if index < 0 or index >= len(self.reverse_vocab):
-                return None
-            return self.reverse_vocab[index]
-
-        def fine_id_to_word(self, course_index, fine_index):
-
-            if isinstance(index, list):
-                return [self.fine_id_to_word(i) for i in index]
-            if course_index < 0 or course_index >= len(self.reverse_vocab):
-                return None
-            if fine_index < 0 or fine_index >= len(self.reverse_aliases[course_index]):
-                return None
-            return self.reverse_aliases[course_index][fine_index]
+            if (isinstance(course_id, list) 
+                    and isinstance(fine_id, list) 
+                    and isinstance(plurality, list)):
+                return [self.id_to_word(i, j, k) for i, j, k in zip(course_id, fine_id, plurality)]
+            if (not isinstance(course_id, list) 
+                    and not isinstance(fine_id, list) 
+                    and not isinstance(plurality, list)):
+                if (course_id >= 0 and course_id < len(self.reverse_plurality_vocab)
+                       and fine_id >= 0 and fine_id < len(self.reverse_plurality_vocab[course_id])
+                       and plurality >= 0 and plurality < 2):
+                    return self.reverse_plurality_vocab[course_id][fine_id][plurality]
+            return None
 
         def sentence_to_categories(self, sentence):
 
@@ -165,14 +168,19 @@ def get_visual_categories():
                 return None
             if isinstance(sentence[0], list):
                 return [self.sentence_to_categories(x) for x in sentence]
-            coarse_categories = []
-            fine_categories = []
-            for i, names in enumerate(self.reverse_aliases):
-                for j, word in enumerate(names):
-                    if word in sentence:
-                        coarse_categories.append(i)
-                        fine_categories.append(j)
-            return coarse_categories, fine_categories
+            if not isinstance(sentence[0], str):
+                return None
+            coarse = []
+            fine = []
+            plurality = []
+            for i, x in enumerate(self.reverse_plurality_vocab):
+                for j, y in enumerate(x):
+                    for k, word in enumerate(y):
+                        if word in sentence:
+                            coarse.append(i)
+                            fine.append(j)
+                            plurality.append(k)
+            return coarse, fine, plurality
             
     return CategoryMap(word_names, fine_grain_words)
 
@@ -192,9 +200,15 @@ def get_visual_attributes():
             first, *remaining = line.split(", ")
             if first not in attribute_names:
                 attribute_names.append(first)
+            plural_first = pluralize(first)
+            if plural_first not in attribute_names:
+                attribute_names.append(plural_first)
             for rest in remaining:
                 if rest not in attribute_names:
                     attribute_names.append(rest)
+                plural_rest = pluralize(rest)
+                if plural_rest not in attribute_names:
+                    attribute_names.append(plural_rest)
                     
     class AttributeMap(object):
 
@@ -232,6 +246,44 @@ def get_visual_attributes():
             return present_attributes
             
     return AttributeMap(attribute_names)
+
+
+@cached_load
+def get_parts_of_speech():
+    
+    check_runtime
+    POS_names = ["NOUN", "VERB", "ADJ", 
+                       "NUM", "ADV", "PRON", 
+                       "PRT", "ADP", "DET", 
+                       "CONJ", ".", "X"]
+                    
+    class PartOfSpeechMap(object):
+
+        def __init__(self, POS_names):
+            
+            self.vocab = { word : i for i, word in enumerate(POS_names)}
+            self.reverse_vocab = POS_names
+
+        def word_to_id(self, word, tagger):
+
+            if isinstance(word, list):
+                return [self.word_to_id(w, tagger) for w in word]
+            if word in self.vocab:
+                self.vocab[word]
+            _, this_POS = tagger.tag([word])[0]
+            if this_POS in self.vocab:
+                return self.vocab[this_POS]
+            return None
+
+        def id_to_word(self, index):
+
+            if isinstance(index, list):
+                return [self.id_to_word(i) for i in index]
+            if index < 0 or index >= len(self.reverse_vocab):
+                return None
+            return self.reverse_vocab[index]
+            
+    return PartOfSpeechMap(POS_names)
 
 
 def get_faster_rcnn_config():
@@ -300,6 +352,14 @@ def get_best_first_checkpoint():
     return tf.train.latest_checkpoint(name), (name + 'model.ckpt')
 
 
+def get_attribute_detector_checkpoint():
+
+    check_runtime()
+    name = 'ckpts/attribute_detector/'
+    tf.gfile.MakeDirs(name)
+    return tf.train.latest_checkpoint(name), (name + 'model.ckpt')
+
+
 def remap_decoder_name_scope(var_list):
     """Bug fix for running beam search decoder and dynamic rnn."""
     return {
@@ -352,3 +412,11 @@ def recursive_ids_to_string(ids, vocab):
     if isinstance(ids[0], list):
         return [recursive_ids_to_string(x, vocab) for x in ids]
     return list_of_ids_to_string(ids, vocab)
+
+
+def pluralize(word):
+    """
+    Converts a word to its plural form.
+    Adapted from https://stackoverflow.com/questions/18902608/generating-the-plural-form-of-a-noun
+    """
+    return pattern.en.pluralize(word)

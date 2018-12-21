@@ -27,6 +27,7 @@ from detailed_captioning.utils import load_glove
 from detailed_captioning.utils import load_tagger
 from detailed_captioning.utils import get_visual_categories
 from detailed_captioning.utils import get_visual_attributes
+from detailed_captioning.utils import get_parts_of_speech
 from detailed_captioning.layers.box_extractor import BoxExtractor
 from detailed_captioning.layers.feature_extractor import FeatureExtractor
 from detailed_captioning.utils import get_faster_rcnn_config
@@ -97,7 +98,12 @@ AttributeMetadata = namedtuple("AttributeMetadata",
 CategoryMetadata = namedtuple("CategoryMetadata",
                            ["image_id", "filename", "captions", "image_features", "object_features",
                             "running_ids", "running_ids_splits", "word_ids", "pointer_ids",
-                            "attributes", "coarse_categories", "fine_categories"])
+                            "attributes", "coarse", "fine", "plurality"])
+
+PartOfSpeechMetadata = namedtuple("PartOfSpeechMetadata",
+                           ["image_id", "filename", "captions", "image_features", "object_features",
+                            "running_ids", "running_ids_splits", "word_ids", "pointer_ids",
+                            "attributes", "coarse", "fine", "plurality", "parts_of_speech_ids"])
 
 class ImageDecoder(object):
     """Helper class for decoding images in TensorFlow."""
@@ -180,8 +186,10 @@ def _to_sequence_example(image, vocab):
         "image/word_ids": _int64_feature_list(image.word_ids),
         "image/pointer_ids": _int64_feature_list(image.pointer_ids),
         "image/attributes": _int64_feature_list(image.attributes),
-        "image/coarse_categories": _int64_feature_list(image.coarse_categories),
-        "image/fine_categories": _int64_feature_list(image.fine_categories),
+        "image/coarse": _int64_feature_list(image.coarse),
+        "image/fine": _int64_feature_list(image.fine),
+        "image/plurality": _int64_feature_list(image.plurality),
+        "image/parts_of_speech_ids": _int64_feature_list(image.parts_of_speech_ids),
     })
     sequence_example = tf.train.SequenceExample(
         context=context, feature_lists=feature_lists)
@@ -229,7 +237,7 @@ def _process_best_first(images, vocab, tagger):
 
 
 def _process_attributes(images, vocab, tagger):
-    """Processes a list of images into best first training examples.
+    """Processes a list of images.
     Args:
         images: a list containing BestFirstMetadata objects.
         vocab: a Vocabulary object.
@@ -259,7 +267,7 @@ def _process_attributes(images, vocab, tagger):
 
 
 def _process_categories(images, vocab, tagger):
-    """Processes a list of images into best first training examples.
+    """Processes a list of images.
     Args:
         images: a list containing AttributeMetadata objects.
         vocab: a Vocabulary object.
@@ -272,7 +280,7 @@ def _process_categories(images, vocab, tagger):
     for image in images:
         
         caption = image.captions[0]
-        coarse_categories, fine_categories = category_map.sentence_to_categories(caption)
+        coarse, fine, plurality = category_map.sentence_to_categories(caption)
         category_images.append(CategoryMetadata(
             image_id=image.image_id, 
             filename=image.filename, 
@@ -284,10 +292,45 @@ def _process_categories(images, vocab, tagger):
             word_ids=image.word_ids, 
             pointer_ids=image.pointer_ids,
             attributes=image.attributes,
-            coarse_categories=coarse_categories,
-            fine_categories=fine_categories))
+            coarse=coarse,
+            fine=fine,
+            plurality=plurality))
             
     return category_images
+
+
+def _process_parts_of_speech(images, vocab, tagger):
+    """Processes a list of images.
+    Args:
+        images: a list containing CategoryMetadata objects.
+        vocab: a Vocabulary object.
+        tagger: a Tagger object from nltk.
+    Returns:
+        a list of PartOfSpeechMetadata objects.
+    """
+    POS_map = get_parts_of_speech()
+    POS_images = []
+    for image in images:
+        
+        caption = image.captions[0]
+        parts_of_speech_ids = POS_map.word_to_id(caption, tagger)
+        POS_images.append(PartOfSpeechMetadata(
+            image_id=image.image_id, 
+            filename=image.filename, 
+            captions=image.captions, 
+            image_features=image.image_features, 
+            object_features=image.object_features,
+            running_ids=image.running_ids, 
+            running_ids_splits=image.running_ids_splits,
+            word_ids=image.word_ids, 
+            pointer_ids=image.pointer_ids,
+            attributes=image.attributes,
+            coarse=image.coarse,
+            fine=image.fine,
+            plurality=image.plurality,
+            parts_of_speech_ids=parts_of_speech_ids))
+            
+    return POS_images
         
 
 def _process_image_files(thread_index, ranges, name, images, vocab, tagger, num_shards, 
@@ -331,6 +374,7 @@ def _process_image_files(thread_index, ranges, name, images, vocab, tagger, num_
         these_images = _process_best_first(these_images, vocab, tagger)
         these_images = _process_attributes(these_images, vocab, tagger)
         these_images = _process_categories(these_images, vocab, tagger)
+        these_images = _process_parts_of_speech(these_images, vocab, tagger)
         
         for image in these_images:
             sequence_example = _to_sequence_example(image, vocab)
