@@ -32,7 +32,6 @@ def main(unused_argv):
             saver.restore(sess, get_faster_rcnn_checkpoint())
             results = sess.run([boxes, scores, cropped_inputs], feed_dict={inputs: image})
             
-        assert(all([x == y for x, y in zip(results[0].shape, [1, 100, 4])]))
         tf.logging.info("Successfully passed test.")
         
         height = image.shape[1]

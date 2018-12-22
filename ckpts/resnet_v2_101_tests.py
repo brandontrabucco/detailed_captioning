@@ -16,7 +16,7 @@ def main(unused_argv):
     
     with tf.device("/cpu:0"):
 
-        image = np.random.uniform(-1, 1, [1, 300, 300, 3])
+        image = np.random.uniform(-1, 1, [1, 224, 224, 3])
         
         g = tf.Graph()
         with g.as_default():
