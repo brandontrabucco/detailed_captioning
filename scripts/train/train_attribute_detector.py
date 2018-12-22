@@ -34,7 +34,8 @@ def main(unused_argv):
         image_id, mean_features, attributes, input_seq, target_seq, indicator = import_mscoco(
             mode="train", batch_size=FLAGS.batch_size, num_epochs=FLAGS.num_epochs, is_mini=FLAGS.is_mini)
         attribute_detector = AttributeDetector(1000)
-        logits, detections = attribute_detector(mean_features)
+        logits, detections, update_hypothesis_step = attribute_detector(mean_features, 
+            ground_truth_attributes=attributes, false_positive_constraint=0.05)
         tf.losses.sigmoid_cross_entropy(attributes, logits)
         loss = tf.losses.get_total_loss()
         
@@ -56,21 +57,22 @@ def main(unused_argv):
             captioner_saver.save(sess, captioner_ckpt_name, global_step=global_step)
             last_save = time.time()
             
-            _detections, _loss, _learning_step = sess.run([detections, loss, learning_step])
-            
             for i in itertools.count():
                 
                 time_start = time.time()
                 try:
-                    _attributes, _detections, _loss, _learning_step = sess.run([
-                        attributes, detections, loss, learning_step])
+                    _attributes, _detections, _loss, _a, _b = sess.run([
+                        attributes, 
+                        detections, 
+                        loss, learning_step, update_hypothesis_step])
                 except:
                     break
                     
                 iteration = sess.run(global_step)
                     
                 print(PRINT_STRING.format(
-                    iteration, _loss, str(attribute_map.id_to_word(np.where(
+                    iteration, _loss, 
+                    str(attribute_map.id_to_word(np.where(
                         _detections[0, :] > 0.5)[0].tolist())), 
                     str(attribute_map.id_to_word(np.where(
                         _attributes[0, :] > 0.5)[0].tolist())),
