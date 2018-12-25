@@ -78,7 +78,8 @@ def load_tagger():
     # See: https://github.com/brandontrabucco/glove/tree/8f11a9b3ab927a15a947683ca7a1fcbc5d9c8ba1
     config = glove.configuration.TaggerConfiguration(
         tagger_dir="/home/ubuntu/research/data/glove/tagger/")
-    return glove.tagger.load(config)
+    tagger = glove.tagger.load(config)
+    return tagger
 
 
 def cached_load(load_fn):
@@ -255,7 +256,7 @@ def get_parts_of_speech():
     POS_names = ["NOUN", "VERB", "ADJ", 
                        "NUM", "ADV", "PRON", 
                        "PRT", "ADP", "DET", 
-                       "CONJ", ".", "X"]
+                       "CONJ", ".", "X", "<S>", "</S>", "<UNK>"]
                     
     class PartOfSpeechMap(object):
 
@@ -263,6 +264,9 @@ def get_parts_of_speech():
             
             self.vocab = { word : i for i, word in enumerate(POS_names)}
             self.reverse_vocab = POS_names
+            self.start_id = self.vocab["<S>"]
+            self.end_id   = self.vocab["</S>"]
+            self.unk_id   = self.vocab["<UNK>"]
 
         def word_to_id(self, word, tagger):
 
