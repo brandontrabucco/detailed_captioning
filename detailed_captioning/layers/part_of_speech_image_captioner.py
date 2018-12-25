@@ -44,7 +44,7 @@ class PartOfSpeechImageCaptioner(tf.keras.layers.Layer):
         assert(mean_image_features is not None or mean_object_features is not None or
             spatial_image_features is not None or spatial_object_features is not None)
         use_beam_search = (word_seq_inputs is None or word_lengths is None or 
-            pos_seq_inputs is None or pos_seq_outputs is None or pos_lengths)
+            pos_seq_inputs is None or pos_seq_outputs is None or pos_lengths is None)
         if mean_image_features is not None:
             batch_size = tf.shape(mean_image_features)[0]
         elif mean_object_features is not None:
@@ -131,9 +131,10 @@ class PartOfSpeechImageCaptioner(tf.keras.layers.Layer):
             tf.nn.embedding_lookup(self.pos_embeddings_map, pos_seq_inputs),
             sequence_length=tf.reshape(pos_lengths, [-1]), initial_state=pos_decoder_initial_state)
         pos_logits = self.pos_logits_layer(pos_decoder_activations)
-        _, word_initial_state = tf.nn.dynamic_rnn(self.pos_encoder_cell, 
-            tf.nn.embedding_lookup(self.pos_embeddings_map, pos_seq_outputs),
-            sequence_length=tf.reshape(pos_lengths, [-1]), initial_state=pos_encoder_initial_state)
+        if not use_beam_search:
+            _activations, word_initial_state = tf.nn.dynamic_rnn(self.pos_encoder_cell, 
+                tf.nn.embedding_lookup(self.pos_embeddings_map, pos_seq_outputs),
+                sequence_length=tf.reshape(pos_lengths, [-1]), initial_state=pos_encoder_initial_state)
         word_activations, _state = tf.nn.dynamic_rnn(self.image_caption_cell, 
             tf.nn.embedding_lookup(self.word_embeddings_map, word_seq_inputs),
             sequence_length=tf.reshape(word_lengths, [-1]), initial_state=word_initial_state)

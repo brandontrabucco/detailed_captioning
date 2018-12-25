@@ -28,7 +28,7 @@ class UpDownCell(ImageCaptionCell):
             initializer=None, num_proj=None, proj_clip=None,
             num_unit_shards=None, num_proj_shards=None,
             forget_bias=1.0, state_is_tuple=True,
-            activation=None, reuse=None, name=None, dtype=None,
+            activation=None, reuse=None, name="up_down", dtype=None,
             mean_image_features=None, mean_object_features=None, **kwargs ):
         super(UpDownCell, self).__init__(
             reuse=reuse, name=name, dtype=dtype,
@@ -52,7 +52,7 @@ class UpDownCell(ImageCaptionCell):
             x = tf.transpose(x, [0, 2, 1])
             return x
         self.attn_layer = tf.layers.Dense(1, kernel_initializer=initializer, 
-            name="attention", activation=softmax_attention)
+            name=name + "/attention", activation=softmax_attention)
         self._state_size = UpDownStateTuple(
             self.visual_lstm.state_size, self.language_lstm.state_size)
         self._output_size = self.language_lstm.output_size

@@ -172,8 +172,10 @@ def _to_sequence_example(image, vocab):
         "image/data": _bytes_feature(encoded_image),
     })
     assert len(image.captions) == 1
+    POS_map = get_parts_of_speech()
     caption = image.captions[0]
-    caption_ids = [vocab.word_to_id(word) for word in caption]
+    caption_ids = [vocab.start_id] + vocab.word_to_id(caption) + [vocab.end_id]
+    parts_of_speech_ids = [POS_map.start_id] + image.parts_of_speech_ids + [POS_map.end_id]
     feature_lists = tf.train.FeatureLists(feature_list={
         "image/caption": _bytes_feature_list([bytes(c, "utf-8") for c in caption]),
         "image/caption_ids": _int64_feature_list(caption_ids),
@@ -189,7 +191,7 @@ def _to_sequence_example(image, vocab):
         "image/coarse": _int64_feature_list(image.coarse),
         "image/fine": _int64_feature_list(image.fine),
         "image/plurality": _int64_feature_list(image.plurality),
-        "image/parts_of_speech_ids": _int64_feature_list(image.parts_of_speech_ids),
+        "image/parts_of_speech_ids": _int64_feature_list(parts_of_speech_ids),
     })
     sequence_example = tf.train.SequenceExample(
         context=context, feature_lists=feature_lists)
@@ -438,18 +440,6 @@ def _process_dataset(name, images, vocab, tagger, num_shards, run_model_fn):
           (datetime.now(), len(images), name))
 
 
-def _process_caption(caption):
-    """Processes a caption string into a list of tonenized words.
-    Args:
-        caption: A string caption.
-    Returns:
-        A list of strings; the tokenized caption.
-    """
-    tokenized_caption = []
-    tokenized_caption.extend(nltk.tokenize.word_tokenize(caption.lower()))
-    return tokenized_caption
-
-
 def _load_and_process_metadata(captions_file, image_dir):
     """Loads image metadata from a JSON file and processes the captions.
     Args:
@@ -483,7 +473,7 @@ def _load_and_process_metadata(captions_file, image_dir):
     num_captions = 0
     for image_id, base_filename in id_to_filename:
         filename = os.path.join(image_dir, base_filename)
-        captions = [_process_caption(c) for c in id_to_captions[image_id]]
+        captions = [nltk.tokenize.word_tokenize(c.lower()) for c in id_to_captions[image_id]]
         image_metadata.append(ImageMetadata(image_id, filename, captions))
         num_captions += len(captions)
     # Break up each image into a separate entity for each caption.

@@ -364,6 +364,14 @@ def get_attribute_detector_checkpoint():
     return tf.train.latest_checkpoint(name), (name + 'model.ckpt')
 
 
+def get_up_down_part_of_speech_checkpoint():
+    
+    check_runtime()
+    name = 'ckpts/up_down_part_of_speech/'
+    tf.gfile.MakeDirs(name)
+    return tf.train.latest_checkpoint(name), (name + 'model.ckpt')
+
+
 def remap_decoder_name_scope(var_list):
     """Bug fix for running beam search decoder and dynamic rnn."""
     return {
