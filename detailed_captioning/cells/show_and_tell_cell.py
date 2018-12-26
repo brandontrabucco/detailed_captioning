@@ -14,7 +14,7 @@ class ShowAndTellCell(ImageCaptionCell):
             initializer=None, num_proj=None, proj_clip=None,
             num_unit_shards=None, num_proj_shards=None,
             forget_bias=1.0, state_is_tuple=True,
-            activation=None, reuse=None, name=None, dtype=None,
+            activation=None, reuse=None, name="show_and_tell", dtype=None,
             mean_image_features=None, **kwargs ):
         super(ShowAndTellCell, self).__init__(
             reuse=reuse, name=name, dtype=dtype,
@@ -24,7 +24,7 @@ class ShowAndTellCell(ImageCaptionCell):
             initializer=initializer, num_proj=num_proj, proj_clip=proj_clip,
             num_unit_shards=num_unit_shards, num_proj_shards=num_proj_shards,
             forget_bias=forget_bias, state_is_tuple=state_is_tuple,
-            activation=activation, reuse=reuse, name=name, dtype=dtype)
+            activation=activation, reuse=reuse, name=(name + "/language"), dtype=dtype)
         self._state_size = self.language_lstm.state_size
         self._output_size = self.language_lstm.output_size
 

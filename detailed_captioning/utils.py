@@ -373,12 +373,23 @@ def get_up_down_part_of_speech_checkpoint():
 
 
 def remap_decoder_name_scope(var_list):
-    """Bug fix for running beam search decoder and dynamic rnn."""
-    return {
-        x.name.replace("decoder/", "rnn/")
-              .replace("rnn/logits_layer", "logits_layer")
-              .replace("decoder/while/BeamSearchDecoderStep/logits_layer", "logits_layer")[:-2] : x 
-        for x in var_list}
+    """Bug fix for running beam search decoder and dynamic rnn during inference / training."""
+    var_names = {}
+    for x in var_list:
+        x_name = x.name
+        if "decoder" in x_name and "layer" in x_name:
+            var_names[x_name.replace("decoder/", "")
+                .replace("decoder_1/", "")
+                .replace("decoder_2/", "")
+                .replace("decoder_3/", "")
+                .replace("decoder_4/", "") ] = x
+        else:
+            var_names[x_name.replace("decoder/", "rnn/")
+                .replace("decoder_1/", "rnn/")
+                .replace("decoder_2/", "rnn/")
+                .replace("decoder_3/", "rnn/")
+                .replace("decoder_4/", "rnn/") ] = x
+    return var_names
 
 
 def get_train_annotations_file():

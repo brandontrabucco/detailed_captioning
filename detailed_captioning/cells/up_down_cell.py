@@ -39,20 +39,20 @@ class UpDownCell(ImageCaptionCell):
             initializer=initializer, num_proj=num_proj, proj_clip=proj_clip,
             num_unit_shards=num_unit_shards, num_proj_shards=num_proj_shards,
             forget_bias=forget_bias, state_is_tuple=state_is_tuple,
-            activation=activation, reuse=reuse, name=name, dtype=dtype)
+            activation=activation, reuse=reuse, name=(name + "/visual"), dtype=dtype)
         self.language_lstm = tf.contrib.rnn.LSTMCell(num_units, 
             use_peepholes=use_peepholes, cell_clip=cell_clip,
             initializer=initializer, num_proj=num_proj, proj_clip=proj_clip,
             num_unit_shards=num_unit_shards, num_proj_shards=num_proj_shards,
             forget_bias=forget_bias, state_is_tuple=state_is_tuple,
-            activation=activation, reuse=reuse, name=name, dtype=dtype)
+            activation=activation, reuse=reuse, name=(name + "/language"), dtype=dtype)
         def softmax_attention(x):
             x = tf.transpose(x, [0, 2, 1])
             x = tf.nn.softmax(x)
             x = tf.transpose(x, [0, 2, 1])
             return x
         self.attn_layer = tf.layers.Dense(1, kernel_initializer=initializer, 
-            name=name + "/attention", activation=softmax_attention)
+            name=(name + "/attention_layer"), activation=softmax_attention)
         self._state_size = UpDownStateTuple(
             self.visual_lstm.state_size, self.language_lstm.state_size)
         self._output_size = self.language_lstm.output_size

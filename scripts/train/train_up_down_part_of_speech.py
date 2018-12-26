@@ -52,6 +52,9 @@ def main(unused_argv):
         tf.losses.sparse_softmax_cross_entropy(pos_target_seq, pos_logits, weights=pos_indicator)
         loss = tf.losses.get_total_loss()
         
+        print([x.name for x in image_captioner.variables])
+        exit()
+        
         global_step = tf.train.get_or_create_global_step()
         learning_rate = tf.train.exponential_decay(FLAGS.learning_rate, 
             global_step, (FLAGS.num_examples // FLAGS.batch_size) * FLAGS.epochs_per_decay, 

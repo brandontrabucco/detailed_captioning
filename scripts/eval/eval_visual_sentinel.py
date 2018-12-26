@@ -73,6 +73,6 @@ if __name__ == "__main__":
             evaluate(
                 FLAGS.mode,
                 json_dump, 
-                "ckpts/visual_sentinel/", 
+                captioner_ckpt_name.replace("model.ckpt", ""), 
                 (get_train_annotations_file() if FLAGS.mode in ["train", "eval"] 
                     else get_val_annotations_file()))
