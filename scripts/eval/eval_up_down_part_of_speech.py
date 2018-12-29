@@ -38,7 +38,7 @@ if __name__ == "__main__":
 
         (image_id, image_features, object_features, input_seq, target_seq, indicator, 
                 pos_input_seq, pos_target_seq, pos_indicator) = import_mscoco(
-            mode="train", batch_size=FLAGS.batch_size, num_epochs=1, is_mini=FLAGS.is_mini)
+            mode=FLAGS.mode, batch_size=FLAGS.batch_size, num_epochs=1, is_mini=FLAGS.is_mini)
         up_down_caption_cell = UpDownCell(300, name="up_down_caption_cell")
         up_down_decoder_cell = UpDownCell(300, name="up_down_decoder_cell")
         up_down_encoder_cell = UpDownCell(300, name="up_down_encoder_cell")

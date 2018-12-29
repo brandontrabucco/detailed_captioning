@@ -14,14 +14,14 @@ from detailed_captioning.utils import list_of_ids_to_string
 from detailed_captioning.inputs.mean_image_and_object_features_only import import_mscoco
 
 
-PRINT_STRING = """({3:.2f} img/sec) iteration: {0:05d} loss: {1:.5f}\n    caption: {2}"""
+PRINT_STRING = """
+({4:.2f} img/sec) iteration: {0:05d} loss: {1:.5f}
+    caption: {2}
+    actual: {3}"""
+
 tf.logging.set_verbosity(tf.logging.INFO)
 tf.flags.DEFINE_integer("num_epochs", 100, "")
 tf.flags.DEFINE_integer("batch_size", 32, "")
-tf.flags.DEFINE_integer("num_examples", 5000, "")
-tf.flags.DEFINE_integer("epochs_per_decay", 8, "")
-tf.flags.DEFINE_float("learning_rate", 1.0, "")
-tf.flags.DEFINE_float("decay_rate", 1.0, "")
 tf.flags.DEFINE_boolean("is_mini", False, "")
 FLAGS = tf.flags.FLAGS
 
@@ -42,19 +42,18 @@ def main(unused_argv):
         loss = tf.losses.get_total_loss()
         
         global_step = tf.train.get_or_create_global_step()
-        learning_rate = tf.train.exponential_decay(FLAGS.learning_rate, 
-            global_step, (FLAGS.num_examples // FLAGS.batch_size) * FLAGS.epochs_per_decay, 
-            FLAGS.decay_rate, staircase=True)
-        learning_step = tf.train.GradientDescentOptimizer(learning_rate).minimize(loss, 
-            var_list=image_captioner.variables, global_step=global_step)
+        optimizer = tf.train.AdamOptimizer()
+        learning_step = optimizer.minimize(loss, var_list=image_captioner.variables, global_step=global_step)
 
         captioner_saver = tf.train.Saver(var_list=image_captioner.variables + [global_step])
         captioner_ckpt, captioner_ckpt_name = get_up_down_checkpoint()
         with tf.Session() as sess:
             
-            sess.run(tf.variables_initializer(image_captioner.variables + [global_step]))
+            sess.run(tf.variables_initializer(optimizer.variables()))
             if captioner_ckpt is not None:
                 captioner_saver.restore(sess, captioner_ckpt)
+            else:
+                sess.run(tf.variables_initializer(image_captioner.variables + [global_step]))
             captioner_saver.save(sess, captioner_ckpt_name, global_step=global_step)
             last_save = time.time()
             
@@ -62,14 +61,16 @@ def main(unused_argv):
                 
                 time_start = time.time()
                 try:
-                    _ids, _loss, _learning_step = sess.run([ids, loss, learning_step])
+                    _target, _ids, _loss, _learning_step = sess.run([target_seq, ids, loss, learning_step])
                 except:
                     break
                     
                 iteration = sess.run(global_step)
                     
                 print(PRINT_STRING.format(
-                    iteration, _loss, list_of_ids_to_string(_ids[0, :].tolist(), vocab), 
+                    iteration, _loss, 
+                    list_of_ids_to_string(_ids[0, :].tolist(), vocab), 
+                    list_of_ids_to_string(_target[0, :].tolist(), vocab), 
                     FLAGS.batch_size / (time.time() - time_start)))
                 
                 new_save = time.time()

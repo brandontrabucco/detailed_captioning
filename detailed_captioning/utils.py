@@ -377,18 +377,18 @@ def remap_decoder_name_scope(var_list):
     var_names = {}
     for x in var_list:
         x_name = x.name
-        if "decoder" in x_name and "layer" in x_name:
+        if "decoder" in x_name and "logits" in x_name:
             var_names[x_name.replace("decoder/", "")
                 .replace("decoder_1/", "")
                 .replace("decoder_2/", "")
                 .replace("decoder_3/", "")
-                .replace("decoder_4/", "") ] = x
+                .replace("decoder_4/", "")[:-2] ] = x
         else:
             var_names[x_name.replace("decoder/", "rnn/")
                 .replace("decoder_1/", "rnn/")
                 .replace("decoder_2/", "rnn/")
                 .replace("decoder_3/", "rnn/")
-                .replace("decoder_4/", "rnn/") ] = x
+                .replace("decoder_4/", "rnn/")[:-2] ] = x
     return var_names
 
 
