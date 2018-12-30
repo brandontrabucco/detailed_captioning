@@ -11,7 +11,7 @@ class BestFirstModule(tf.layers.Layer):
     def __init__(self, image_caption_cell, word_vocabulary, word_embeddings):
 
         self.word_vocabulary = word_vocabulary
-        self.word_embeddings = tf.get_variable("word_embeddings", 
+        self.embeddings_map = tf.get_variable("embeddings_map", 
             initializer=tf.constant(word_embeddings, dtype=tf.float32), dtype=tf.float32)
         self.image_caption_cell = image_caption_cell
         self.pointer_layer = tf.layers.Dense(1)

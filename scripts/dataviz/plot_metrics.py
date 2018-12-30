@@ -23,7 +23,7 @@ def main(unused_argv):
     for model_name in model_names:
         best_filename, best_time = None, -999999.999999
         for filename in raw_filenames:
-            if model_name in filename:
+            if (model_name + "/") in filename:
                 x_time = float(os.path.basename(
                     filename).replace("{0}.metrics.".format(FLAGS.mode), "").replace(".json", ""))
                 if x_time > best_time:

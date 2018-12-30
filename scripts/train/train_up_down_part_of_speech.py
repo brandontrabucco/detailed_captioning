@@ -72,7 +72,8 @@ def main(unused_argv):
                 
                 time_start = time.time()
                 try:
-                    _target, _ids, _loss, _learning_step = sess.run([target_seq, ids, loss, learning_step])
+                    _target, _ids, _loss, _learning_step = sess.run([target_seq, word_ids, 
+                        loss, learning_step])
                 except:
                     break
                     
