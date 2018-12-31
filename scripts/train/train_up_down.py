@@ -43,7 +43,8 @@ def main(unused_argv):
         
         global_step = tf.train.get_or_create_global_step()
         optimizer = tf.train.AdamOptimizer()
-        learning_step = optimizer.minimize(loss, var_list=image_captioner.variables, global_step=global_step)
+        learning_step = optimizer.minimize(loss, var_list=image_captioner.variables, 
+            global_step=global_step)
 
         captioner_saver = tf.train.Saver(var_list=image_captioner.variables + [global_step])
         captioner_ckpt, captioner_ckpt_name = get_up_down_checkpoint()

@@ -103,9 +103,12 @@ class BestFirstImageCaptioner(tf.keras.layers.Layer):
             self.best_first_cell.spatial_object_features = spatial_object_features   
             
         self.best_first_cell.is_using_dynamic_rnn = True
-            
-        rnn_inputs = tf.concat([
-            tf.expand_dims(word_ids[:, :-1], 2), tf.expand_dims(pointer_ids[:, 1:], 2)], 2)
+        
+        if use_beam_search:
+            rnn_inputs = tf.concat([tf.expand_dims(word_ids[:, :-1], 2), 
+                tf.expand_dims(pointer_ids[:, 1:], 2)], 2)
+        else:
+            rnn_inputs = tf.concat([tf.expand_dims(word_ids, 2), tf.expand_dims(pointer_ids, 2)], 2)
         activations, _state = tf.nn.dynamic_rnn(self.best_first_cell, rnn_inputs, 
             sequence_length=tf.reshape(lengths, [-1]), initial_state=initial_state, dtype=tf.float32)
         word_activations, pointer_logits = tf.split(activations, [
