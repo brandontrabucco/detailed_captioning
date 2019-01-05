@@ -316,10 +316,26 @@ def get_up_down_checkpoint():
     return tf.train.latest_checkpoint(name), (name + 'model.ckpt')
 
 
+def get_up_down_attribute_checkpoint():
+
+    check_runtime()
+    name = 'ckpts/up_down_attribute/'
+    tf.gfile.MakeDirs(name)
+    return tf.train.latest_checkpoint(name), (name + 'model.ckpt')
+
+
 def get_visual_sentinel_checkpoint():
 
     check_runtime()
     name = 'ckpts/visual_sentinel/'
+    tf.gfile.MakeDirs(name)
+    return tf.train.latest_checkpoint(name), (name + 'model.ckpt')
+
+
+def get_visual_sentinel_attribute_checkpoint():
+
+    check_runtime()
+    name = 'ckpts/visual_sentinel_attribute/'
     tf.gfile.MakeDirs(name)
     return tf.train.latest_checkpoint(name), (name + 'model.ckpt')
 
@@ -332,6 +348,22 @@ def get_show_and_tell_checkpoint():
     return tf.train.latest_checkpoint(name), (name + 'model.ckpt')
 
 
+def get_show_and_tell_attribute_checkpoint():
+
+    check_runtime()
+    name = 'ckpts/show_and_tell_attribute/'
+    tf.gfile.MakeDirs(name)
+    return tf.train.latest_checkpoint(name), (name + 'model.ckpt')
+
+
+def get_show_attend_and_tell_attribute_checkpoint():
+
+    check_runtime()
+    name = 'ckpts/show_attend_and_tell_attribute/'
+    tf.gfile.MakeDirs(name)
+    return tf.train.latest_checkpoint(name), (name + 'model.ckpt')
+
+
 def get_show_attend_and_tell_checkpoint():
 
     check_runtime()
@@ -340,10 +372,26 @@ def get_show_attend_and_tell_checkpoint():
     return tf.train.latest_checkpoint(name), (name + 'model.ckpt')
 
 
+def get_show_attend_and_tell_attribute_checkpoint():
+
+    check_runtime()
+    name = 'ckpts/show_attend_and_tell_attribute/'
+    tf.gfile.MakeDirs(name)
+    return tf.train.latest_checkpoint(name), (name + 'model.ckpt')
+
+
 def get_spatial_attention_checkpoint():
 
     check_runtime()
     name = 'ckpts/spatial_attention/'
+    tf.gfile.MakeDirs(name)
+    return tf.train.latest_checkpoint(name), (name + 'model.ckpt')
+
+
+def get_spatial_attention_attribute_checkpoint():
+
+    check_runtime()
+    name = 'ckpts/spatial_attention_attribute/'
     tf.gfile.MakeDirs(name)
     return tf.train.latest_checkpoint(name), (name + 'model.ckpt')
 

@@ -13,14 +13,14 @@ from detailed_captioning.utils import get_visual_attributes
 from detailed_captioning.inputs.mean_image_features_and_attributes_only import import_mscoco
 
 
-PRINT_STRING = """({4:.2f} img/sec) iteration: {0:05d} loss: {1:.5f}\n    predicted: {2}\n    actual: {3}"""
+PRINT_STRING = """
+({0:.2f} img/sec) iteration: {1:05d} loss: {2:.5f}
+    predicted: {3}
+    correct: {4}"""
+
 tf.logging.set_verbosity(tf.logging.INFO)
 tf.flags.DEFINE_integer("num_epochs", 100, "")
 tf.flags.DEFINE_integer("batch_size", 32, "")
-tf.flags.DEFINE_integer("num_examples", 5000, "")
-tf.flags.DEFINE_integer("epochs_per_decay", 8, "")
-tf.flags.DEFINE_float("learning_rate", 1.0, "")
-tf.flags.DEFINE_float("decay_rate", 1.0, "")
 tf.flags.DEFINE_boolean("is_mini", False, "")
 FLAGS = tf.flags.FLAGS
 
@@ -34,22 +34,20 @@ def main(unused_argv):
         image_id, mean_features, attributes, input_seq, target_seq, indicator = import_mscoco(
             mode="train", batch_size=FLAGS.batch_size, num_epochs=FLAGS.num_epochs, is_mini=FLAGS.is_mini)
         attribute_detector = AttributeDetector(1000)
-        logits, detections, update_hypothesis_step = attribute_detector(mean_features, 
-            ground_truth_attributes=attributes, false_positive_constraint=0.05)
+        logits, detections, = attribute_detector(mean_features)
         tf.losses.sigmoid_cross_entropy(attributes, logits)
         loss = tf.losses.get_total_loss()
         
         global_step = tf.train.get_or_create_global_step()
-        learning_rate = tf.train.exponential_decay(FLAGS.learning_rate, 
-            global_step, (FLAGS.num_examples // FLAGS.batch_size) * FLAGS.epochs_per_decay, 
-            FLAGS.decay_rate, staircase=True)
-        learning_step = tf.train.GradientDescentOptimizer(learning_rate).minimize(loss, 
-            var_list=attribute_detector.variables, global_step=global_step)
+        optimizer = tf.train.AdamOptimizer()
+        learning_step = optimizer.minimize(loss, var_list=attribute_detector.variables, 
+            global_step=global_step)
 
         captioner_saver = tf.train.Saver(var_list=attribute_detector.variables + [global_step])
         captioner_ckpt, captioner_ckpt_name = get_attribute_detector_checkpoint()
         with tf.Session() as sess:
             
+            sess.run(tf.variables_initializer(optimizer.variables()))
             if captioner_ckpt is not None:
                 captioner_saver.restore(sess, captioner_ckpt)
             else:
@@ -61,22 +59,21 @@ def main(unused_argv):
                 
                 time_start = time.time()
                 try:
-                    _attributes, _detections, _loss, _a, _b = sess.run([
-                        attributes, 
-                        detections, 
-                        loss, learning_step, update_hypothesis_step])
+                    _attributes, _detections, _loss, _ = sess.run([
+                        attributes, detections, loss, learning_step])
                 except:
                     break
                     
                 iteration = sess.run(global_step)
+                ground_truth_ids = np.where(_attributes[0, :] > 0.5)
                     
                 print(PRINT_STRING.format(
-                    iteration, _loss, 
-                    str(attribute_map.id_to_word(np.where(
-                        _detections[0, :] > 0.5)[0].tolist())), 
-                    str(attribute_map.id_to_word(np.where(
-                        _attributes[0, :] > 0.5)[0].tolist())),
-                    FLAGS.batch_size / (time.time() - time_start)))
+                    FLAGS.batch_size / (time.time() - time_start),
+                    iteration, 
+                    _loss, 
+                    str(attribute_map.id_to_word(_detections[0, :].tolist())),
+                    str(attribute_map.id_to_word(ground_truth_ids[0].tolist())),
+                    ))
                 
                 new_save = time.time()
                 if new_save - last_save > 3600: # save the model every hour

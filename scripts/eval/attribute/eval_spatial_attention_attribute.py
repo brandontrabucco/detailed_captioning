@@ -7,21 +7,23 @@ import time
 import json
 import itertools
 import tensorflow as tf
-import numpy as np
-from detailed_captioning.layers.best_first_image_captioner import BestFirstImageCaptioner
-from detailed_captioning.cells.show_and_tell_cell import ShowAndTellCell
+import numpy as 
+from detailed_captioning.layers.attribute_detector import AttributeDetector
+from detailed_captioning.layers.attribute_image_captioner import AttributeImageCaptioner
+from detailed_captioning.cells.spatial_attention_cell import SpatialAttentionCell
 from detailed_captioning.utils import check_runtime
 from detailed_captioning.utils import load_glove
 from detailed_captioning.utils import load_image_from_path
-from detailed_captioning.utils import get_resnet_v2_101_checkpoint
-from detailed_captioning.utils import get_best_first_checkpoint
+from detailed_captioning.utils import get_visual_attributes
+from detailed_captioning.utils import get_spatial_attention_attribute_checkpoint 
+from detailed_captioning.utils import get_attribute_detector_checkpoint 
 from detailed_captioning.utils import remap_decoder_name_scope
 from detailed_captioning.utils import list_of_ids_to_string
 from detailed_captioning.utils import recursive_ids_to_string
 from coco_metrics import evaluate
 from detailed_captioning.utils import get_train_annotations_file
 from detailed_captioning.utils import get_val_annotations_file
-from detailed_captioning.inputs.mean_image_features_best_first_only import import_mscoco
+from detailed_captioning.inputs.spatial_image_features_only import import_mscoco
 
 
 PRINT_STRING = """({3:.2f} img/sec) iteration: {0:05d}\n    caption: {1}\n    label: {2}"""
@@ -36,16 +38,24 @@ FLAGS = tf.flags.FLAGS
 if __name__ == "__main__":
     
     vocab, pretrained_matrix = load_glove(vocab_size=100000, embedding_size=300)
+    attribute_map, attribute_embeddings_map = get_visual_attributes(), np.random.normal(0, 0.1, [1000, 2048])
     with tf.Graph().as_default():
 
-        image_id, image_features, indicator, word_ids, pointer_ids = import_mscoco(
+        image_id, spatial_features, input_seq, target_seq, indicator = import_mscoco(
             mode=FLAGS.mode, batch_size=FLAGS.batch_size, num_epochs=1, is_mini=FLAGS.is_mini)
-        image_captioner = BestFirstImageCaptioner(ShowAndTellCell(300), vocab, pretrained_matrix, 
-            trainable=False, beam_size=FLAGS.beam_size)
-        word_logits, wids, pointer_logits, pids, ids, _lengths = image_captioner(
-            mean_image_features=image_features)
-        captioner_saver = tf.train.Saver(var_list=remap_decoder_name_scope(image_captioner.variables))
-        captioner_ckpt, captioner_ckpt_name = get_best_first_checkpoint()
+        spatial_attention_cell = SpatialAttentionCell(300, num_image_features=2048)
+        attribute_image_captioner = AttributeImageCaptioner(
+            spatial_attention_cell, vocab, pretrained_matrix,
+            attribute_map, attribute_embeddings_map)
+        attribute_detector = AttributeDetector(1000)
+        _, top_k_attributes = attribute_detector(tf.reduce_mean(spatial_features, [1, 2]))
+        logits, ids = attribute_image_captioner(top_k_attributes,
+            spatial_image_features=spatial_features)
+
+        captioner_saver = tf.train.Saver(var_list=attribute_image_captioner.variables)
+        attribute_detector_saver = tf.train.Saver(var_list=attribute_detector.variables)
+        captioner_ckpt, captioner_ckpt_name = get_spatial_attention_attribute_checkpoint()
+        attribute_detector_ckpt, attribute_detector_ckpt_name = get_attribute_detector_checkpoint()
 
         with tf.Session() as sess:
 
@@ -57,7 +67,7 @@ if __name__ == "__main__":
             for i in itertools.count():
                 time_start = time.time()
                 try:
-                    _ids, _target_seq, _image_id = sess.run([ids, word_ids, image_id])
+                    _ids, _target_seq, _image_id = sess.run([ids, target_seq, image_id])
                 except:
                     break
                 the_captions = recursive_ids_to_string(_ids[:, 0, :].tolist(), vocab)

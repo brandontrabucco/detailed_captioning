@@ -51,7 +51,7 @@ class UpDownCell(ImageCaptionCell):
             x = tf.nn.softmax(x)
             x = tf.transpose(x, [0, 2, 1])
             return x
-        self.attn_layer = tf.layers.Dense(1, kernel_initializer=initializer, 
+        self.attention_layer = tf.layers.Dense(1, kernel_initializer=initializer, 
             name=(name + "/attention_layer"), activation=softmax_attention)
         self._state_size = UpDownStateTuple(
             self.visual_lstm.state_size, self.language_lstm.state_size)
@@ -68,17 +68,18 @@ class UpDownCell(ImageCaptionCell):
     def __call__(self, inputs, state):
         v_inputs = tf.concat([tf.concat(state.language, 1), self.mean_image_features, inputs], 1)
         v_outputs, v_next_state = self.visual_lstm(v_inputs, state.visual)
-        attn_inputs = tf.concat([ self.mean_object_features, 
-            tile_with_new_axis(v_outputs, [tf.shape(self.mean_object_features)[1]], [1]) ], 2)
-        attended_mof = tf.reduce_sum(self.mean_object_features * self.attn_layer(attn_inputs), 1)
-        l_inputs = tf.concat([v_outputs, attended_mof], 1)
+        attention_inputs = tf.concat([ self.mean_object_features, tile_with_new_axis(v_outputs, [
+            tf.shape(self.mean_object_features)[1]], [1]) ], 2)
+        attended_features = tf.reduce_sum(self.mean_object_features * self.attention_layer(
+            attention_inputs), 1)
+        l_inputs = tf.concat([v_outputs, attended_features], 1)
         l_outputs, l_next_state = self.language_lstm(l_inputs, state.language)
         return l_outputs, UpDownStateTuple(v_next_state, l_next_state)
     
     @property
     def trainable_variables(self):
         cell_variables = (self.visual_lstm.trainable_variables 
-                + self.language_lstm.trainable_variables + self.attn_layer.trainable_variables)
+                + self.language_lstm.trainable_variables + self.attention_layer.trainable_variables)
         return cell_variables
     
     @property
@@ -88,7 +89,7 @@ class UpDownCell(ImageCaptionCell):
     @property
     def variables(self):
         cell_variables = (self.visual_lstm.variables 
-                + self.language_lstm.variables + self.attn_layer.variables)
+                + self.language_lstm.variables + self.attention_layer.variables)
         return cell_variables
     
     @property

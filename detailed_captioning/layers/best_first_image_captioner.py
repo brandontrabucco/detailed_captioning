@@ -122,7 +122,8 @@ class BestFirstImageCaptioner(tf.keras.layers.Layer):
                 self.maximum_iterations])
             
         return (word_logits, tf.argmax(word_logits, axis=-1, output_type=tf.int32),
-                pointer_logits, tf.argmax(pointer_logits, axis=-1, output_type=tf.int32))
+                pointer_logits, tf.argmax(pointer_logits, axis=-1, output_type=tf.int32),
+                _state.caption, _state.lengths + 1)
         
     @property
     def trainable_variables(self):

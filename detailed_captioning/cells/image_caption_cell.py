@@ -14,12 +14,14 @@ class ImageCaptionCell(tf.contrib.rnn.LayerRNNCell):
             reuse=None, name=None, dtype=None,
             mean_image_features=None, mean_object_features=None, 
             spatial_image_features=None, spatial_object_features=None, 
+            num_image_features=2048, # This is the default for ResNet-101
             **kwargs ):
         super(ImageCaptionCell, self).__init__(_reuse=reuse, name=name, dtype=dtype, **kwargs)
         self._mean_image_features = mean_image_features
         self._mean_object_features = mean_object_features
         self._spatial_image_features = spatial_image_features
         self._spatial_object_features = spatial_object_features
+        self.num_image_features = num_image_features
         
     @property
     def mean_image_features(self):
