@@ -190,7 +190,7 @@ def get_visual_categories():
 def get_visual_attributes():
     
     check_runtime()
-    filename = "data/visual_words.txt"
+    filename = "data/attribute_names.txt"
     attribute_names = []
     with open(filename, "r") as f:
         content = f.readlines()
@@ -198,18 +198,8 @@ def get_visual_attributes():
         if line is not None:
             line = line.lower().strip()
         if line is not None:
-            first, *remaining = line.split(", ")
-            if first not in attribute_names:
-                attribute_names.append(first)
-            plural_first = pluralize(first)
-            if plural_first not in attribute_names:
-                attribute_names.append(plural_first)
-            for rest in remaining:
-                if rest not in attribute_names:
-                    attribute_names.append(rest)
-                plural_rest = pluralize(rest)
-                if plural_rest not in attribute_names:
-                    attribute_names.append(plural_rest)
+            if line not in attribute_names:
+                attribute_names.append(line)
                     
     class AttributeMap(object):
 
@@ -306,6 +296,14 @@ def get_resnet_v2_101_checkpoint():
 
     check_runtime()
     return ('ckpts/resnet_v2_101/resnet_v2_101.ckpt')
+
+
+def get_grounded_attribute_checkpoint():
+
+    check_runtime()
+    name = 'ckpts/grounded_attribute/'
+    tf.gfile.MakeDirs(name)
+    return tf.train.latest_checkpoint(name), (name + 'model.ckpt')
 
 
 def get_up_down_checkpoint():

@@ -7,7 +7,7 @@ import time
 import json
 import itertools
 import tensorflow as tf
-import numpy as 
+import numpy as np
 from detailed_captioning.layers.attribute_detector import AttributeDetector
 from detailed_captioning.layers.attribute_image_captioner import AttributeImageCaptioner
 from detailed_captioning.cells.up_down_cell import UpDownCell
@@ -23,7 +23,7 @@ from detailed_captioning.utils import recursive_ids_to_string
 from coco_metrics import evaluate
 from detailed_captioning.utils import get_train_annotations_file
 from detailed_captioning.utils import get_val_annotations_file
-from detailed_captioning.inputs.mean_image_features_only import import_mscoco
+from detailed_captioning.inputs.mean_image_and_object_features_only import import_mscoco
 
 
 PRINT_STRING = """({3:.2f} img/sec) iteration: {0:05d}\n    caption: {1}\n    label: {2}"""
@@ -41,8 +41,9 @@ if __name__ == "__main__":
     attribute_map, attribute_embeddings_map = get_visual_attributes(), np.random.normal(0, 0.1, [1000, 2048])
     with tf.Graph().as_default():
 
-        image_id, mean_features, input_seq, target_seq, indicator = import_mscoco(
+        image_id, mean_features, object_features, input_seq, target_seq, indicator = import_mscoco(
             mode=FLAGS.mode, batch_size=FLAGS.batch_size, num_epochs=1, is_mini=FLAGS.is_mini)
+        up_down_cell = UpDownCell(300, num_image_features=2048)
         attribute_image_captioner = AttributeImageCaptioner(
             up_down_cell, vocab, pretrained_matrix,
             attribute_map, attribute_embeddings_map)
@@ -52,15 +53,17 @@ if __name__ == "__main__":
             mean_image_features=mean_features,
             mean_object_features=object_features)
 
-        captioner_saver = tf.train.Saver(var_list=attribute_image_captioner.variables)
+        captioner_saver = tf.train.Saver(var_list=remap_decoder_name_scope(
+            attribute_image_captioner.variables))
         attribute_detector_saver = tf.train.Saver(var_list=attribute_detector.variables)
         captioner_ckpt, captioner_ckpt_name = get_up_down_attribute_checkpoint()
         attribute_detector_ckpt, attribute_detector_ckpt_name = get_attribute_detector_checkpoint()
 
         with tf.Session() as sess:
 
-            assert(captioner_ckpt is not None)
+            assert(captioner_ckpt is not None and attribute_detector_ckpt is not None)
             captioner_saver.restore(sess, captioner_ckpt)
+            attribute_detector_saver.restore(sess, attribute_detector_ckpt)
             used_ids = set()
             json_dump = []
 

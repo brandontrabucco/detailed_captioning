@@ -15,10 +15,13 @@ class AttributeDetector(tf.keras.layers.Layer):
             kernel_initializer=tf.contrib.layers.xavier_initializer())
         
     
-    def __call__(self, mean_image_features, k=8):
-        logits = self.attributes_layer(mean_image_features)
-        _, top_k_attributes = tf.nn.top_k(logits, k=k)
-        return logits, top_k_attributes
+    def __call__(self, mean_image_features, mean_object_features, k=8):
+        image_logits = self.attributes_layer(mean_image_features)
+        object_logits = self.attributes_layer(mean_object_features)
+        logits = tf.reduce_max(tf.concat([tf.expand_dims(image_logits, 1), object_logits], 1), 1)
+        _, image_attributes = tf.nn.top_k(logits, k=k)
+        _, object_attributes = tf.nn.top_k(object_logits, k=k)
+        return logits, image_attributes, object_attributes
         
     @property
     def trainable_variables(self):

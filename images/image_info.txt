@@ -2,3 +2,7 @@
 Image provenance:
 image.jpg: https://commons.wikimedia.org/wiki/File:Baegle_dwa.jpg
 
+
+        score_threshold: 0.300000011921
+        iou_threshold: 0.600000023842
+

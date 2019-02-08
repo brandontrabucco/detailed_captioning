@@ -37,8 +37,12 @@ class ImageCaptioner(tf.keras.layers.Layer):
             batch_size = tf.shape(mean_object_features)[0]
         elif spatial_image_features is not None:
             batch_size = tf.shape(spatial_image_features)[0]
+            spatial_image_features = collapse_dims(spatial_image_features, [1, 2])
+            mean_image_features = tf.reduce_mean(spatial_image_features, [1])
         elif spatial_object_features is not None:
             batch_size = tf.shape(spatial_object_features)[0] 
+            spatial_object_features = collapse_dims(spatial_object_features, [2, 3])
+            mean_object_features =tf.reduce_mean(spatial_object_features, [2])
         initial_state = self.image_caption_cell.zero_state(batch_size, tf.float32)
         if use_beam_search:
             if mean_image_features is not None:

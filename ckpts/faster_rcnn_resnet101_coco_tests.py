@@ -20,6 +20,7 @@ def main(unused_argv):
     with tf.device("/cpu:0"):
 
         image = load_image_from_path("images/image.jpg")[np.newaxis, ...]
+        print(image.dtype)
         
         g = tf.Graph()
         with g.as_default():
@@ -56,6 +57,14 @@ def main(unused_argv):
             ax.add_patch(rect)
             
         plt.savefig("images/image_boxes.png")
+        plt.clf()
+        
+        for i in range(results[0].shape[1]):
+            
+            fig, ax = plt.subplots(1)
+            ax.imshow(results[2][i, ...].astype(np.uint8))
+            plt.savefig("images/box{0}.png".format(i))
+            plt.clf()
         
 
 if __name__ == "__main__":

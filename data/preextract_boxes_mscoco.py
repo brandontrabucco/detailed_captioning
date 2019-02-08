@@ -26,10 +26,8 @@ from datetime import datetime
 from detailed_captioning.utils import get_visual_attributes
 from detailed_captioning.utils import load_glove
 from detailed_captioning.layers.box_extractor import BoxExtractor
-from detailed_captioning.layers.feature_extractor import FeatureExtractor
 from detailed_captioning.utils import get_faster_rcnn_config
 from detailed_captioning.utils import get_faster_rcnn_checkpoint
-from detailed_captioning.utils import get_resnet_v2_101_checkpoint
 
 
 tf.logging.set_verbosity(tf.logging.INFO)
@@ -67,7 +65,7 @@ tf.flags.DEFINE_string("unknown_word", "<UNK>",
 tf.flags.DEFINE_integer("vocab_size", 100000, "")
 tf.flags.DEFINE_integer("image_height", 224, "")
 tf.flags.DEFINE_integer("image_width", 224, "")
-tf.flags.DEFINE_integer("batch_size", 4, "")
+tf.flags.DEFINE_integer("batch_size", 32, "")
 
 FLAGS = tf.flags.FLAGS
 
@@ -76,8 +74,7 @@ ImageMetadata = namedtuple("ImageMetadata",
 
 PreextractedMetadata = namedtuple("PreextractedMetadata",
                            ["image_id", "filename", "caption", 
-                            "attributes", "mean_image_features", "mean_object_features"])
-
+                            "attributes", "boxes"])
 
 class Extractor(object):
     """Helper class for extracting boxes from images."""
@@ -96,22 +93,10 @@ class Extractor(object):
             FLAGS.image_height, FLAGS.image_width, 3])
         self.boxes, self.scores, self.cropped_images = self.box_extractor(self.image_tensor)
         
-        # Create the model to extract the image features
-        self.feature_extractor = FeatureExtractor(is_training=False, global_pool=False)
-        # Compute the mean ResNet-101 features
-        self.image_features = tf.reduce_mean(self.feature_extractor(self.image_tensor), [1, 2])
-        feature_batch = tf.shape(self.image_features)[0]
-        feature_depth = tf.shape(self.image_features)[1]
-        self.object_features = tf.reduce_mean(self.feature_extractor(self.cropped_images), [1, 2])
-        self.object_features = tf.reshape(self.object_features, [
-            feature_batch, 100, feature_depth])
-        
         # Create a single TensorFlow Session for all image decoding calls.
         self.sess = tf.Session()
-        rcnn_saver = tf.train.Saver(var_list=self.box_extractor.variables)
-        resnet_saver = tf.train.Saver(var_list=self.feature_extractor.variables)
-        rcnn_saver.restore(self.sess, get_faster_rcnn_checkpoint())
-        resnet_saver.restore(self.sess, get_resnet_v2_101_checkpoint())
+        self.rcnn_saver = tf.train.Saver(var_list=self.box_extractor.variables)
+        self.rcnn_saver.restore(self.sess, get_faster_rcnn_checkpoint())
         self.lock = threading.Lock()
         self.attribute_map = get_visual_attributes()
         
@@ -130,8 +115,7 @@ class Extractor(object):
         images = np.stack([self.sess.run(self.decoded_jpeg, feed_dict={
             self.encoded_jpeg: x}) for x in encoded_jpegs], axis=0)
         self.lock.acquire()
-        result_image, result_object = self.sess.run(
-            [self.image_features, self.object_features], feed_dict={self.image_tensor: images})
+        result = self.sess.run(self.boxes, feed_dict={self.image_tensor: images})
         self.lock.release()
         
         list_of_preextracted_metadata = []
@@ -144,8 +128,7 @@ class Extractor(object):
                     caption=image_meta.captions[0],
                     attributes=self.attribute_map.sentence_to_attributes(
                         image_meta.captions[0]),
-                    mean_image_features=result_image[i, ...],
-                    mean_object_features=result_object[i, ...]))
+                    boxes=result[i, ...]))
             
         return list_of_preextracted_metadata
 
@@ -189,7 +172,6 @@ def _to_sequence_example(image, vocab):
         A SequenceExample proto."""
     with tf.gfile.FastGFile(image.filename, "rb") as f:
         encoded_image = f.read()
-        
     sequence_example = tf.train.SequenceExample(
         context=tf.train.Features(feature={
             "image/image_id": _int64_feature(image.image_id),
@@ -198,11 +180,7 @@ def _to_sequence_example(image, vocab):
             "image/caption_ids": _int64_feature_list(
                 [vocab.start_id] + vocab.word_to_id(image.caption) + [vocab.end_id]),
             "image/attributes": _int64_feature_list(image.attributes),
-            "image/mean_image_features": _float_feature_list(
-                image.mean_image_features.flatten().tolist()),
-            "image/mean_object_features": _float_feature_list(
-                image.mean_object_features.flatten().tolist())}))
-    
+            "image/boxes": _float_feature_list(image.boxes.flatten().tolist())}))
     return sequence_example
 
 

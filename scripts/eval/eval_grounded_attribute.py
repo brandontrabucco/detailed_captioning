@@ -2,28 +2,24 @@
 Test the image captioning model with some fake inputs.'''
 
 
-import os
 import time
-import json
 import itertools
 import tensorflow as tf
 import numpy as np
 from detailed_captioning.layers.attribute_detector import AttributeDetector
-from detailed_captioning.layers.attribute_image_captioner import AttributeImageCaptioner
-from detailed_captioning.cells.spatial_attention_cell import SpatialAttentionCell
-from detailed_captioning.utils import check_runtime
 from detailed_captioning.utils import load_glove
-from detailed_captioning.utils import load_image_from_path
-from detailed_captioning.utils import get_visual_attributes
-from detailed_captioning.utils import get_spatial_attention_attribute_checkpoint 
 from detailed_captioning.utils import get_attribute_detector_checkpoint 
+from detailed_captioning.utils import get_visual_attributes
+from detailed_captioning.layers.attribute_captioner import AttributeCaptioner
+from detailed_captioning.cells.grounded_attribute_cell import GroundedAttributeCell
+from detailed_captioning.utils import get_grounded_attribute_checkpoint 
 from detailed_captioning.utils import remap_decoder_name_scope
 from detailed_captioning.utils import list_of_ids_to_string
 from detailed_captioning.utils import recursive_ids_to_string
 from coco_metrics import evaluate
 from detailed_captioning.utils import get_train_annotations_file
 from detailed_captioning.utils import get_val_annotations_file
-from detailed_captioning.inputs.spatial_image_features_only import import_mscoco
+from detailed_captioning.inputs.captions_and_attributes import import_mscoco
 
 
 PRINT_STRING = """({3:.2f} img/sec) iteration: {0:05d}\n    caption: {1}\n    label: {2}"""
@@ -38,31 +34,39 @@ FLAGS = tf.flags.FLAGS
 if __name__ == "__main__":
     
     vocab, pretrained_matrix = load_glove(vocab_size=100000, embedding_size=300)
-    attribute_map, attribute_embeddings_map = get_visual_attributes(), np.random.normal(0, 0.1, [1000, 2048])
+    attribute_map = get_visual_attributes()
+    attribute_to_word_lookup_table = vocab.word_to_id(attribute_map.reverse_vocab)
+    
     with tf.Graph().as_default():
-
-        image_id, spatial_features, input_seq, target_seq, indicator = import_mscoco(
+        
+        (image_id, image_features, object_features, input_seq, target_seq, indicator, 
+         attributes) = import_mscoco(
             mode=FLAGS.mode, batch_size=FLAGS.batch_size, num_epochs=1, is_mini=FLAGS.is_mini)
-        spatial_attention_cell = SpatialAttentionCell(300, num_image_features=2048)
-        attribute_image_captioner = AttributeImageCaptioner(
-            spatial_attention_cell, vocab, pretrained_matrix,
-            attribute_map, attribute_embeddings_map)
+        
         attribute_detector = AttributeDetector(1000)
-        _, top_k_attributes = attribute_detector(tf.reduce_mean(spatial_features, [1, 2]))
-        logits, ids = attribute_image_captioner(top_k_attributes,
-            spatial_image_features=spatial_features)
+        _, image_attributes, object_attributes = attribute_detector(image_features, object_features)
+        
+        grounded_attribute_cell = GroundedAttributeCell(1024)
+        attribute_captioner = AttributeCaptioner(grounded_attribute_cell, vocab, pretrained_matrix,
+            attribute_to_word_lookup_table,
+            trainable=False, beam_size=FLAGS.beam_size)
+        logits, ids = attribute_captioner(
+            mean_image_features=image_features,
+            mean_object_features=object_features,
+            image_attributes=image_attributes, object_attributes=object_attributes)
+        
+        detector_saver = tf.train.Saver(var_list=attribute_detector.variables)
+        detector_ckpt, detector_ckpt_name = get_attribute_detector_checkpoint()
 
-        captioner_saver = tf.train.Saver(var_list=remap_decoder_name_scope(
-            attribute_image_captioner.variables))
-        attribute_detector_saver = tf.train.Saver(var_list=attribute_detector.variables)
-        captioner_ckpt, captioner_ckpt_name = get_spatial_attention_attribute_checkpoint()
-        attribute_detector_ckpt, attribute_detector_ckpt_name = get_attribute_detector_checkpoint()
+        captioner_saver = tf.train.Saver(var_list=remap_decoder_name_scope(attribute_captioner.variables))
+        captioner_ckpt, captioner_ckpt_name = get_grounded_attribute_checkpoint()
 
         with tf.Session() as sess:
 
-            assert(captioner_ckpt is not None and attribute_detector_ckpt is not None)
+            assert(detector_ckpt is not None)
+            assert(captioner_ckpt is not None)
+            detector_saver.restore(sess, detector_ckpt)
             captioner_saver.restore(sess, captioner_ckpt)
-            attribute_detector_saver.restore(sess, attribute_detector_ckpt)
             used_ids = set()
             json_dump = []
 

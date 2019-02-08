@@ -10,7 +10,7 @@ from detailed_captioning.layers.attribute_detector import AttributeDetector
 from detailed_captioning.utils import load_glove
 from detailed_captioning.utils import get_attribute_detector_checkpoint 
 from detailed_captioning.utils import get_visual_attributes
-from detailed_captioning.inputs.mean_image_features_and_attributes_only import import_mscoco
+from detailed_captioning.inputs.captions_and_attributes import import_mscoco
 
 
 PRINT_STRING = """
@@ -31,10 +31,11 @@ def main(unused_argv):
     
     with tf.Graph().as_default():
 
-        image_id, mean_features, attributes, input_seq, target_seq, indicator = import_mscoco(
+        (image_id, image_features, object_features, input_seq, target_seq, indicator, 
+         attributes) = import_mscoco(
             mode="train", batch_size=FLAGS.batch_size, num_epochs=FLAGS.num_epochs, is_mini=FLAGS.is_mini)
         attribute_detector = AttributeDetector(1000)
-        logits, detections, = attribute_detector(mean_features)
+        logits, image_detections, object_detections = attribute_detector(image_features, object_features)
         tf.losses.sigmoid_cross_entropy(attributes, logits)
         loss = tf.losses.get_total_loss()
         
@@ -60,7 +61,7 @@ def main(unused_argv):
                 time_start = time.time()
                 try:
                     _attributes, _detections, _loss, _ = sess.run([
-                        attributes, detections, loss, learning_step])
+                        attributes, image_detections, loss, learning_step])
                 except:
                     break
                     

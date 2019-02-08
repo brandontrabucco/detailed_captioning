@@ -7,7 +7,7 @@ import time
 import json
 import itertools
 import tensorflow as tf
-import numpy as 
+import numpy as np
 from detailed_captioning.layers.attribute_detector import AttributeDetector
 from detailed_captioning.layers.attribute_image_captioner import AttributeImageCaptioner
 from detailed_captioning.cells.show_and_tell_cell import ShowAndTellCell
@@ -52,15 +52,17 @@ if __name__ == "__main__":
         logits, ids = attribute_image_captioner(top_k_attributes,
             mean_image_features=mean_features)
         
-        captioner_saver = tf.train.Saver(var_list=attribute_image_captioner.variables)
+        captioner_saver = tf.train.Saver(var_list=remap_decoder_name_scope(
+            attribute_image_captioner.variables))
         attribute_detector_saver = tf.train.Saver(var_list=attribute_detector.variables)
         captioner_ckpt, captioner_ckpt_name = get_show_and_tell_attribute_checkpoint()
         attribute_detector_ckpt, attribute_detector_ckpt_name = get_attribute_detector_checkpoint()
 
         with tf.Session() as sess:
 
-            assert(captioner_ckpt is not None)
+            assert(captioner_ckpt is not None and attribute_detector_ckpt is not None)
             captioner_saver.restore(sess, captioner_ckpt)
+            attribute_detector_saver.restore(sess, attribute_detector_ckpt)
             used_ids = set()
             json_dump = []
 
